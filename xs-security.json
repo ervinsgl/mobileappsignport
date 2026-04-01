@@ -1,5 +1,5 @@
 {
-  "xsappname": "mobileappwebcontainer",
+  "xsappname": "mobileappsignport",
   "tenant-mode": "dedicated",
   "description": "Security profile of called application",
   "scopes": [],

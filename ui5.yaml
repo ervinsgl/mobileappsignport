@@ -2,7 +2,7 @@
 
 specVersion: "4.0"
 metadata:
-  name: mobileappwebcontainer
+  name: mobileappsignport
 type: application
 server:
   customMiddleware:
