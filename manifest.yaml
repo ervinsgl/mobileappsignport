@@ -1,6 +1,6 @@
 applications:
   - name: mobileappsignport
-    memory: 256M
+    memory: 512M
     disk_quota: 512M
     instances: 1
     buildpacks:

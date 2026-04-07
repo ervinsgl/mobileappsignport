@@ -38,17 +38,19 @@
                 title="Open from FSM"
                 description="Open this app from FSM Mobile (Web Container) or FSM Web UI (Shell Extension)." />
 
-            <!-- Context loaded -->
+            <!-- Context + Attachments -->
             <layout:VerticalLayout
                 visible="{view>/contextLoaded}"
                 width="100%"
                 class="sapUiContentPadding">
 
+                <!-- ── Session Context ──────────────────────────────── -->
                 <List
                     id="contextList"
                     headerText="Session Context"
                     mode="None"
-                    showSeparators="Inner">
+                    showSeparators="Inner"
+                    class="sapUiSmallMarginBottom">
 
                     <ObjectListItem
                         title="{view>/context/userName}"
@@ -85,7 +87,55 @@
                         intro="FSM Cloud Domain"
                         icon="sap-icon://world" />
 
+                    <ObjectListItem
+                        title="{view>/context/authToken}"
+                        intro="Auth Token"
+                        icon="sap-icon://locked" />
+
                 </List>
+
+                <!-- ── Attachments Table ───────────────────────────── -->
+                <Table
+                    id="attachmentsTable"
+                    headerText="Attachments"
+                    items="{view>/attachments}"
+                    busy="{view>/attachmentsBusy}"
+                    busyIndicatorDelay="0"
+                    noDataText="No attachments found">
+
+                    <headerToolbar>
+                        <OverflowToolbar>
+                            <Title text="Attachments" level="H5" />
+                            <ToolbarSpacer />
+                            <ObjectStatus
+                                text="{= ${view>/attachments}.length + ' item(s)'}"
+                                visible="{view>/attachmentsLoaded}" />
+                        </OverflowToolbar>
+                    </headerToolbar>
+
+                    <columns>
+                        <Column width="40%">
+                            <Text text="File Name" />
+                        </Column>
+                        <Column width="35%">
+                            <Text text="Type" />
+                        </Column>
+                        <Column width="25%">
+                            <Text text="ID" />
+                        </Column>
+                    </columns>
+
+                    <items>
+                        <ColumnListItem>
+                            <cells>
+                                <Text text="{view>fileName}" />
+                                <Text text="{view>type}" />
+                                <Text text="{view>id}" />
+                            </cells>
+                        </ColumnListItem>
+                    </items>
+
+                </Table>
 
             </layout:VerticalLayout>
 

@@ -12,7 +12,10 @@ sap.ui.define([
                 busy: true,
                 contextLoaded: false,
                 showError: false,
-                context: {}
+                context: {},
+                attachments: [],
+                attachmentsBusy: false,
+                attachmentsLoaded: false
             }), "view");
 
             this._loadContext();
@@ -36,10 +39,47 @@ sap.ui.define([
                     cloudId: context.cloudId
                 });
 
+                // Load attachments once we have a cloudId
+                if (context.cloudId && context.cloudId !== "N/A") {
+                    this._loadAttachments(context.cloudId);
+                } else {
+                    console.warn("No cloudId in context – skipping attachment load");
+                }
+
             } catch (error) {
                 console.warn("FSM context not available:", error.message);
                 oModel.setProperty("/showError", true);
                 oModel.setProperty("/busy", false);
+            }
+        },
+
+        async _loadAttachments(objectId) {
+            const oModel = this.getView().getModel("view");
+
+            oModel.setProperty("/attachmentsBusy", true);
+            console.log("Loading attachments for objectId:", objectId);
+
+            try {
+                const response = await fetch(`/api/attachments/${encodeURIComponent(objectId)}`);
+
+                console.log("Attachments response status:", response.status);
+
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+
+                const attachments = await response.json();
+
+                console.log("Attachments received:", attachments.length, attachments);
+
+                oModel.setProperty("/attachments", attachments);
+                oModel.setProperty("/attachmentsLoaded", true);
+                oModel.setProperty("/attachmentsBusy", false);
+
+            } catch (error) {
+                console.error("Failed to load attachments:", error.message);
+                oModel.setProperty("/attachmentsBusy", false);
+                oModel.setProperty("/attachmentsLoaded", true); // show empty table, not spinner
             }
         }
 

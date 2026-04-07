@@ -13,8 +13,9 @@
  * @requires express
  */
 
-const express = require('express');
-const path = require('path');
+const express    = require('express');
+const path       = require('path');
+const FSMService = require('./utils/FSMService');
 
 const app = express();
 
@@ -126,6 +127,36 @@ app.get('/web-container-context', (req, res) => {
     // Return context without the internal timestamp field
     const { _timestamp, ...contextData } = context;
     return res.json(contextData);
+});
+
+// ===========================
+// FSM API ROUTES
+// ===========================
+
+/**
+ * GET /api/attachments/:objectId
+ *
+ * Returns all attachments linked to a given FSM object ID.
+ * Calls FSM Query API: SELECT w FROM Attachment w WHERE w.object.objectId = '<objectId>'
+ *
+ * Response: [{ id, fileName, type }]
+ */
+app.get('/api/attachments/:objectId', async (req, res) => {
+    const { objectId } = req.params;
+
+    if (!objectId) {
+        return res.status(400).json({ message: 'objectId is required' });
+    }
+
+    try {
+        console.log(`[API] GET /api/attachments/${objectId}`);
+        const attachments = await FSMService.getAttachmentsForObject(objectId);
+        console.log(`[API] Returning ${attachments.length} attachment(s) for objectId: ${objectId}`);
+        return res.json(attachments);
+    } catch (error) {
+        console.error(`[API] Error fetching attachments for ${objectId}:`, error.message);
+        return res.status(500).json({ message: 'Failed to fetch attachments', error: error.message });
+    }
 });
 
 // ===========================
