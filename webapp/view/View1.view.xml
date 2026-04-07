@@ -114,14 +114,20 @@
                     </headerToolbar>
 
                     <columns>
-                        <Column width="40%">
+                        <Column width="25%">
                             <Text text="File Name" />
                         </Column>
-                        <Column width="35%">
+                        <Column width="15%">
                             <Text text="Type" />
                         </Column>
-                        <Column width="25%">
+                        <Column width="20%">
                             <Text text="ID" />
+                        </Column>
+                        <Column width="25%">
+                            <Text text="Content (preview)" />
+                        </Column>
+                        <Column width="15%">
+                            <Text text="Content-Type" />
                         </Column>
                     </columns>
 
@@ -131,6 +137,8 @@
                                 <Text text="{view>fileName}" />
                                 <Text text="{view>type}" />
                                 <Text text="{view>id}" />
+                                <Text text="{view>content}" wrapping="false" />
+                                <Text text="{view>contentType}" />
                             </cells>
                         </ColumnListItem>
                     </items>

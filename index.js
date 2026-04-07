@@ -159,6 +159,26 @@ app.get('/api/attachments/:objectId', async (req, res) => {
     }
 });
 
+/**
+ * GET /api/attachment-content/:attachmentId
+ *
+ * Fetches the binary content of a single attachment from FSM.
+ * Returns { base64, contentType } – base64-encoded PDF and its MIME type.
+ */
+app.get('/api/attachment-content/:attachmentId', async (req, res) => {
+    const { attachmentId } = req.params;
+
+    try {
+        console.log(`[API] GET /api/attachment-content/${attachmentId}`);
+        const result = await FSMService.getAttachmentContent(attachmentId);
+        console.log(`[API] Content fetched for attachmentId: ${attachmentId} | type: ${result.contentType}`);
+        return res.json(result);
+    } catch (error) {
+        console.error(`[API] Error fetching content for ${attachmentId}:`, error.message);
+        return res.status(500).json({ message: 'Failed to fetch attachment content', error: error.message });
+    }
+});
+
 // ===========================
 // STATIC FILES (UI5 frontend)
 // ===========================

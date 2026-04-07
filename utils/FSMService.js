@@ -187,9 +187,38 @@ class FSMService {
         }
     }
 
-    // =========================================================================
-    // PRIVATE HELPERS
-    // =========================================================================
+    /**
+     * Fetch the binary content of an attachment from FSM.
+     * Endpoint: GET /api/data/v4/Attachment/{attachmentId}/content
+     *
+     * @param {string} attachmentId
+     * @returns {Promise<{ base64: string, contentType: string }>}
+     */
+    async getAttachmentContent(attachmentId) {
+        try {
+            const { dest, token } = await this._auth();
+            console.log(`FSMService: Fetching content for attachmentId: ${attachmentId}`);
+
+            const response = await axios.get(
+                `${dest.URL}/api/data/v4/Attachment/${attachmentId}/content`,
+                {
+                    params:       this._accountParams(dest),
+                    headers:      this._headers(dest, token),
+                    responseType: 'arraybuffer'   // receive raw binary
+                }
+            );
+
+            const base64      = Buffer.from(response.data).toString('base64');
+            const contentType = response.headers['content-type'] || 'application/pdf';
+
+            console.log(`FSMService: Attachment content fetched | size: ${response.data.byteLength} bytes | type: ${contentType}`);
+            return { base64, contentType };
+
+        } catch (error) {
+            console.error(`FSMService: Attachment content error for ${attachmentId}:`, error.response?.data || error.message);
+            throw error;
+        }
+    }
 
     /** Resolve destination config + fresh token in one call. */
     async _auth() {

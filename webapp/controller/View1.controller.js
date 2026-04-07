@@ -69,17 +69,52 @@ sap.ui.define([
                 }
 
                 const attachments = await response.json();
-
                 console.log("Attachments received:", attachments.length, attachments);
 
-                oModel.setProperty("/attachments", attachments);
+                // Fetch content for each attachment in parallel
+                const enriched = await Promise.all(
+                    attachments.map(att => this._fetchAttachmentContent(att))
+                );
+
+                oModel.setProperty("/attachments", enriched);
                 oModel.setProperty("/attachmentsLoaded", true);
                 oModel.setProperty("/attachmentsBusy", false);
 
             } catch (error) {
                 console.error("Failed to load attachments:", error.message);
                 oModel.setProperty("/attachmentsBusy", false);
-                oModel.setProperty("/attachmentsLoaded", true); // show empty table, not spinner
+                oModel.setProperty("/attachmentsLoaded", true);
+            }
+        },
+
+        async _fetchAttachmentContent(attachment) {
+            try {
+                const response = await fetch(`/api/attachment-content/${encodeURIComponent(attachment.id)}`);
+
+                if (!response.ok) {
+                    console.warn(`Content fetch failed for ${attachment.id}: HTTP ${response.status}`);
+                    return { ...attachment, content: "N/A", contentType: "application/pdf" };
+                }
+
+                const result = await response.json();
+
+                console.log(`Content fetched for ${attachment.id} | size: ${result.base64?.length} chars`);
+
+                // Store full base64 for later use (signing), show truncated in UI
+                const preview = result.base64
+                    ? result.base64.substring(0, 60) + "..."
+                    : "N/A";
+
+                return {
+                    ...attachment,
+                    content:     preview,
+                    contentFull: result.base64,       // full base64 – available for signing phase
+                    contentType: result.contentType || "application/pdf"
+                };
+
+            } catch (error) {
+                console.error(`Content fetch error for ${attachment.id}:`, error.message);
+                return { ...attachment, content: "Error", contentType: "application/pdf" };
             }
         }
 
