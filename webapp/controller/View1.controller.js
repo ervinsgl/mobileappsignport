@@ -1,8 +1,9 @@
 sap.ui.define([
     "sap/ui/core/mvc/Controller",
     "sap/ui/model/json/JSONModel",
+    "sap/m/MessageBox",
     "mobileappsignport/utils/ContextService"
-], (Controller, JSONModel, ContextService) => {
+], (Controller, JSONModel, MessageBox, ContextService) => {
     "use strict";
 
     return Controller.extend("mobileappsignport.controller.View1", {
@@ -15,11 +16,15 @@ sap.ui.define([
                 context: {},
                 attachments: [],
                 attachmentsBusy: false,
-                attachmentsLoaded: false
+                attachmentsLoaded: false,
+                pdfUrl: null,       // set → PDF panel appears; null → hidden
+                pdfFileName: ""
             }), "view");
 
             this._loadContext();
         },
+
+        // ── Context ────────────────────────────────────────────────────────
 
         async _loadContext() {
             const oModel = this.getView().getModel("view");
@@ -34,12 +39,10 @@ sap.ui.define([
                 console.log("FSM context loaded:", {
                     source: context.source,
                     user: context.userName,
-                    company: context.companyName,
                     objectType: context.objectType,
                     cloudId: context.cloudId
                 });
 
-                // Load attachments once we have a cloudId
                 if (context.cloudId && context.cloudId !== "N/A") {
                     this._loadAttachments(context.cloudId);
                 } else {
@@ -53,25 +56,20 @@ sap.ui.define([
             }
         },
 
+        // ── Attachments ────────────────────────────────────────────────────
+
         async _loadAttachments(objectId) {
             const oModel = this.getView().getModel("view");
-
             oModel.setProperty("/attachmentsBusy", true);
             console.log("Loading attachments for objectId:", objectId);
 
             try {
                 const response = await fetch(`/api/attachments/${encodeURIComponent(objectId)}`);
-
-                console.log("Attachments response status:", response.status);
-
-                if (!response.ok) {
-                    throw new Error(`HTTP ${response.status}`);
-                }
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
                 const attachments = await response.json();
                 console.log("Attachments received:", attachments.length, attachments);
 
-                // Fetch content for each attachment in parallel
                 const enriched = await Promise.all(
                     attachments.map(att => this._fetchAttachmentContent(att))
                 );
@@ -97,25 +95,91 @@ sap.ui.define([
                 }
 
                 const result = await response.json();
-
                 console.log(`Content fetched for ${attachment.id} | size: ${result.base64?.length} chars`);
 
-                // Store full base64 for later use (signing), show truncated in UI
-                const preview = result.base64
-                    ? result.base64.substring(0, 60) + "..."
-                    : "N/A";
+                const preview = result.base64 ? result.base64.substring(0, 60) + "..." : "N/A";
 
                 return {
                     ...attachment,
                     content:     preview,
-                    contentFull: result.base64,       // full base64 – available for signing phase
-                    contentType: result.contentType || "application/pdf"
+                    contentFull: result.base64,
+                    contentType: result.contentType || "application/pdf",
+                    signed:      false
                 };
 
             } catch (error) {
                 console.error(`Content fetch error for ${attachment.id}:`, error.message);
                 return { ...attachment, content: "Error", contentType: "application/pdf" };
             }
+        },
+
+        // ── Sign ───────────────────────────────────────────────────────────
+
+        onSignPress(oEvent) {
+            const oCtx       = oEvent.getSource().getBindingContext("view");
+            const oModel     = oCtx.getModel();
+            const sPath      = oCtx.getPath();
+            const oAttachment = oCtx.getObject();
+            const oContext   = oModel.getProperty("/context");
+
+            console.log("Sign pressed | file:", oAttachment.fileName, "| id:", oAttachment.id);
+
+            // Call CI iFlow trigger
+            fetch("/api/signing/trigger", {
+                method:  "POST",
+                headers: { "Content-Type": "application/json" },
+                body:    JSON.stringify({
+                    attachmentId: oAttachment.id,
+                    fileName:     oAttachment.fileName,
+                    objectId:     oContext.cloudId,
+                    userName:     oContext.userName
+                })
+            })
+            .then(response => {
+                console.log("Signing trigger response status:", response.status);
+                return response.json();
+            })
+            .then(result => {
+                console.log("Signing trigger result:", result);
+            })
+            .catch(error => {
+                console.error("Signing trigger error:", error.message);
+            });
+
+            // Show popup regardless of CI result (for now)
+            MessageBox.success("Signed!", {
+                title:   "Document Signed",
+                details: `File: ${oAttachment.fileName}`,
+                onClose: () => {
+                    oModel.setProperty(sPath + "/signed", true);
+                    console.log("Row marked signed:", oAttachment.fileName);
+                }
+            });
+        },
+
+        // ── PDF Viewer ─────────────────────────────────────────────────────
+
+        onFileNamePress(oEvent) {
+            const oCtx        = oEvent.getSource().getBindingContext("view");
+            const oAttachment = oCtx.getObject();
+            const oModel      = this.getView().getModel("view");
+
+            // Point PDFViewer directly at the backend route that pipes the binary.
+            // Avoids Blob URL iframe security issues inside SAP UI5 PDFViewer.
+            const pdfUrl = `/api/attachment-pdf/${encodeURIComponent(oAttachment.id)}`;
+
+            oModel.setProperty("/pdfUrl", pdfUrl);
+            oModel.setProperty("/pdfFileName", oAttachment.fileName);
+
+            console.log("PDF viewer opened for:", oAttachment.fileName, "| url:", pdfUrl);
+
+            this.byId("pdfPanel").getDomRef()?.scrollIntoView({ behavior: "smooth" });
+        },
+
+        onClosePdf() {
+            const oModel = this.getView().getModel("view");
+            oModel.setProperty("/pdfUrl", null);
+            oModel.setProperty("/pdfFileName", "");
         }
 
     });

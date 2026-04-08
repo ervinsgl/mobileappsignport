@@ -38,70 +38,19 @@
                 title="Open from FSM"
                 description="Open this app from FSM Mobile (Web Container) or FSM Web UI (Shell Extension)." />
 
-            <!-- Context + Attachments -->
             <layout:VerticalLayout
                 visible="{view>/contextLoaded}"
                 width="100%"
                 class="sapUiContentPadding">
 
-                <!-- ── Session Context ──────────────────────────────── -->
-                <List
-                    id="contextList"
-                    headerText="Session Context"
-                    mode="None"
-                    showSeparators="Inner"
-                    class="sapUiSmallMarginBottom">
-
-                    <ObjectListItem
-                        title="{view>/context/userName}"
-                        intro="User"
-                        icon="sap-icon://account" />
-
-                    <ObjectListItem
-                        title="{view>/context/companyName}"
-                        intro="Company"
-                        icon="sap-icon://factory" />
-
-                    <ObjectListItem
-                        title="{view>/context/cloudAccount}"
-                        intro="Cloud Account"
-                        icon="sap-icon://cloud" />
-
-                    <ObjectListItem
-                        title="{view>/context/cloudId}"
-                        intro="Cloud ID / Object ID"
-                        icon="sap-icon://key-user-settings" />
-
-                    <ObjectListItem
-                        title="{view>/context/objectType}"
-                        intro="Object Type"
-                        icon="sap-icon://activity-2" />
-
-                    <ObjectListItem
-                        title="{view>/context/language}"
-                        intro="Language"
-                        icon="sap-icon://globe" />
-
-                    <ObjectListItem
-                        title="{view>/context/dataCloudFullQualifiedDomainName}"
-                        intro="FSM Cloud Domain"
-                        icon="sap-icon://world" />
-
-                    <ObjectListItem
-                        title="{view>/context/authToken}"
-                        intro="Auth Token"
-                        icon="sap-icon://locked" />
-
-                </List>
-
-                <!-- ── Attachments Table ───────────────────────────── -->
+                <!-- ── Attachments table ───────────────────────────────── -->
                 <Table
                     id="attachmentsTable"
-                    headerText="Attachments"
                     items="{view>/attachments}"
                     busy="{view>/attachmentsBusy}"
                     busyIndicatorDelay="0"
-                    noDataText="No attachments found">
+                    noDataText="No attachments found"
+                    class="sapUiSmallMarginBottom">
 
                     <headerToolbar>
                         <OverflowToolbar>
@@ -114,36 +63,89 @@
                     </headerToolbar>
 
                     <columns>
-                        <Column width="25%">
+                        <Column width="8%">
+                            <Text text="" />
+                        </Column>
+                        <Column width="12%">
                             <Text text="File Name" />
                         </Column>
-                        <Column width="15%">
+                        <Column width="8%">
                             <Text text="Type" />
                         </Column>
-                        <Column width="20%">
+                        <Column width="16%">
                             <Text text="ID" />
                         </Column>
-                        <Column width="25%">
+                        <Column width="18%">
                             <Text text="Content (preview)" />
                         </Column>
-                        <Column width="15%">
+                        <Column width="10%">
                             <Text text="Content-Type" />
+                        </Column>
+                        <Column width="10%">
+                            <Text text="User" />
+                        </Column>
+                        <Column width="8%">
+                            <Text text="Language" />
+                        </Column>
+                        <Column width="10%">
+                            <Text text="Auth Token" />
                         </Column>
                     </columns>
 
                     <items>
                         <ColumnListItem>
                             <cells>
-                                <Text text="{view>fileName}" />
+                                <!-- Sign button -->
+                                <Button
+                                    text="{= ${view>signed} ? 'Signed!' : 'Sign PDF' }"
+                                    type="{= ${view>signed} ? 'Success' : 'Emphasized' }"
+                                    enabled="{= !${view>signed} }"
+                                    press="onSignPress" />
+                                <!-- File name → opens PDF inline -->
+                                <Link
+                                    text="{view>fileName}"
+                                    press="onFileNamePress"
+                                    wrapping="false" />
                                 <Text text="{view>type}" />
                                 <Text text="{view>id}" />
                                 <Text text="{view>content}" wrapping="false" />
                                 <Text text="{view>contentType}" />
+                                <!-- Context fields – absolute paths, same value every row -->
+                                <Text text="{view>/context/userName}" />
+                                <Text text="{view>/context/language}" />
+                                <Text text="{view>/context/authToken}" wrapping="false" />
                             </cells>
                         </ColumnListItem>
                     </items>
 
                 </Table>
+
+                <!-- ── Inline PDF viewer ───────────────────────────────── -->
+                <Panel
+                    id="pdfPanel"
+                    visible="{= !!${view>/pdfUrl} }"
+                    width="100%">
+
+                    <headerToolbar>
+                        <OverflowToolbar>
+                            <Title text="{view>/pdfFileName}" level="H5" />
+                            <ToolbarSpacer />
+                            <Button
+                                text="Close"
+                                icon="sap-icon://decline"
+                                press="onClosePdf" />
+                        </OverflowToolbar>
+                    </headerToolbar>
+
+                    <PDFViewer
+                        id="pdfViewer"
+                        source="{view>/pdfUrl}"
+                        isTrustedSource="true"
+                        showDownloadButton="true"
+                        height="600px"
+                        width="100%" />
+
+                </Panel>
 
             </layout:VerticalLayout>
 

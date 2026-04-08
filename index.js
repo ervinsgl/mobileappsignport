@@ -16,6 +16,7 @@
 const express    = require('express');
 const path       = require('path');
 const FSMService = require('./utils/FSMService');
+const CIService  = require('./utils/CIService');
 
 const app = express();
 
@@ -176,6 +177,53 @@ app.get('/api/attachment-content/:attachmentId', async (req, res) => {
     } catch (error) {
         console.error(`[API] Error fetching content for ${attachmentId}:`, error.message);
         return res.status(500).json({ message: 'Failed to fetch attachment content', error: error.message });
+    }
+});
+
+/**
+ * GET /api/attachment-pdf/:attachmentId
+ *
+ * Pipes the raw PDF binary from FSM directly to the browser.
+ * Used as the PDFViewer source – avoids Blob URL iframe security issues.
+ *
+ * Response: raw PDF binary with Content-Type: application/pdf
+ */
+app.get('/api/attachment-pdf/:attachmentId', async (req, res) => {
+    const { attachmentId } = req.params;
+
+    try {
+        console.log(`[API] GET /api/attachment-pdf/${attachmentId}`);
+        const buffer = await FSMService.getAttachmentBuffer(attachmentId);
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', 'inline');
+        res.send(buffer);
+    } catch (error) {
+        console.error(`[API] Error fetching PDF for ${attachmentId}:`, error.message);
+        return res.status(500).json({ message: 'Failed to fetch PDF', error: error.message });
+    }
+});
+
+/**
+ * POST /api/signing/trigger
+ *
+ * Called when the user presses "Sign PDF".
+ * Forwards the request to SAP Integration Suite via CI_BASIC_CONNECT destination.
+ *
+ * Body: { attachmentId, fileName, objectId, userName }
+ * Response: iFlow response data
+ */
+app.post('/api/signing/trigger', async (req, res) => {
+    const { attachmentId, fileName, objectId, userName } = req.body;
+
+    console.log(`[API] POST /api/signing/trigger | attachmentId: ${attachmentId} | file: ${fileName} | object: ${objectId} | user: ${userName}`);
+
+    try {
+        const result = await CIService.triggerSigning({ attachmentId, fileName, objectId, userName });
+        console.log(`[API] Signing trigger successful`);
+        return res.json({ success: true, data: result });
+    } catch (error) {
+        console.error(`[API] Signing trigger failed:`, error.message);
+        return res.status(500).json({ success: false, message: error.message });
     }
 });
 

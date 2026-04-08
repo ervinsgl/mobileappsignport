@@ -220,6 +220,31 @@ class FSMService {
         }
     }
 
+    /**
+     * Fetch attachment binary as a raw Buffer.
+     * Used by the /api/attachment-pdf route to pipe directly to the browser.
+     * @param {string} attachmentId
+     * @returns {Promise<Buffer>}
+     */
+    async getAttachmentBuffer(attachmentId) {
+        try {
+            const { dest, token } = await this._auth();
+            const response = await axios.get(
+                `${dest.URL}/api/data/v4/Attachment/${attachmentId}/content`,
+                {
+                    params:       this._accountParams(dest),
+                    headers:      this._headers(dest, token),
+                    responseType: 'arraybuffer'
+                }
+            );
+            console.log(`FSMService: Buffer fetched for ${attachmentId} | size: ${response.data.byteLength} bytes`);
+            return Buffer.from(response.data);
+        } catch (error) {
+            console.error(`FSMService: getAttachmentBuffer error for ${attachmentId}:`, error.response?.data || error.message);
+            throw error;
+        }
+    }
+
     /** Resolve destination config + fresh token in one call. */
     async _auth() {
         const destination = await DestinationService.getDestination('FSM_OAUTH_CONNECT');
