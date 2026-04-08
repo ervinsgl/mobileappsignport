@@ -207,20 +207,28 @@ app.get('/api/attachment-pdf/:attachmentId', async (req, res) => {
  * POST /api/signing/trigger
  *
  * Called when the user presses "Sign PDF".
- * Forwards the request to SAP Integration Suite via CI_BASIC_CONNECT destination.
+ * 1. Fetches the raw PDF buffer from FSM
+ * 2. Forwards as multipart/form-data to SAP CI via CI_BASIC_CONNECT destination
  *
  * Body: { attachmentId, fileName, objectId, userName }
- * Response: iFlow response data
  */
 app.post('/api/signing/trigger', async (req, res) => {
     const { attachmentId, fileName, objectId, userName } = req.body;
 
-    console.log(`[API] POST /api/signing/trigger | attachmentId: ${attachmentId} | file: ${fileName} | object: ${objectId} | user: ${userName}`);
+    console.log(`[API] POST /api/signing/trigger | file: ${fileName} | attachmentId: ${attachmentId} | object: ${objectId} | user: ${userName}`);
 
     try {
-        const result = await CIService.triggerSigning({ attachmentId, fileName, objectId, userName });
+        // Step 1: fetch PDF binary from FSM
+        console.log(`[API] Fetching PDF buffer from FSM for attachmentId: ${attachmentId}`);
+        const pdfBuffer = await FSMService.getAttachmentBuffer(attachmentId);
+        console.log(`[API] PDF buffer ready | size: ${pdfBuffer.length} bytes`);
+
+        // Step 2: forward to CI as multipart/form-data
+        const result = await CIService.triggerSigning({ pdfBuffer, fileName, userName, attachmentId });
+
         console.log(`[API] Signing trigger successful`);
         return res.json({ success: true, data: result });
+
     } catch (error) {
         console.error(`[API] Signing trigger failed:`, error.message);
         return res.status(500).json({ success: false, message: error.message });

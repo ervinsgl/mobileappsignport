@@ -2,8 +2,9 @@ sap.ui.define([
     "sap/ui/core/mvc/Controller",
     "sap/ui/model/json/JSONModel",
     "sap/m/MessageBox",
-    "mobileappsignport/utils/ContextService"
-], (Controller, JSONModel, MessageBox, ContextService) => {
+    "mobileappsignport/utils/ContextService",
+    "mobileappsignport/utils/SigningService"
+], (Controller, JSONModel, MessageBox, ContextService, SigningService) => {
     "use strict";
 
     return Controller.extend("mobileappsignport.controller.View1", {
@@ -116,45 +117,35 @@ sap.ui.define([
         // ── Sign ───────────────────────────────────────────────────────────
 
         onSignPress(oEvent) {
-            const oCtx       = oEvent.getSource().getBindingContext("view");
-            const oModel     = oCtx.getModel();
-            const sPath      = oCtx.getPath();
+            const oCtx        = oEvent.getSource().getBindingContext("view");
+            const oModel      = oCtx.getModel();
+            const sPath       = oCtx.getPath();
             const oAttachment = oCtx.getObject();
-            const oContext   = oModel.getProperty("/context");
+            const oContext    = oModel.getProperty("/context");
 
-            console.log("Sign pressed | file:", oAttachment.fileName, "| id:", oAttachment.id);
+            console.log("[View1] Sign pressed | file:", oAttachment.fileName, "| id:", oAttachment.id);
 
-            // Call CI iFlow trigger
-            fetch("/api/signing/trigger", {
-                method:  "POST",
-                headers: { "Content-Type": "application/json" },
-                body:    JSON.stringify({
-                    attachmentId: oAttachment.id,
-                    fileName:     oAttachment.fileName,
-                    objectId:     oContext.cloudId,
-                    userName:     oContext.userName
+            SigningService.triggerSigning(oAttachment, oContext)
+                .then(result => {
+                    console.log("[View1] Signing trigger OK | result:", result);
+
+                    MessageBox.success("Signed!", {
+                        title:   "Document Signed",
+                        details: JSON.stringify(result, null, 2),
+                        onClose: () => {
+                            oModel.setProperty(sPath + "/signed", true);
+                            console.log("[View1] Row marked signed:", oAttachment.fileName);
+                        }
+                    });
                 })
-            })
-            .then(response => {
-                console.log("Signing trigger response status:", response.status);
-                return response.json();
-            })
-            .then(result => {
-                console.log("Signing trigger result:", result);
-            })
-            .catch(error => {
-                console.error("Signing trigger error:", error.message);
-            });
+                .catch(error => {
+                    console.error("[View1] Signing trigger failed:", error.message);
 
-            // Show popup regardless of CI result (for now)
-            MessageBox.success("Signed!", {
-                title:   "Document Signed",
-                details: `File: ${oAttachment.fileName}`,
-                onClose: () => {
-                    oModel.setProperty(sPath + "/signed", true);
-                    console.log("Row marked signed:", oAttachment.fileName);
-                }
-            });
+                    MessageBox.error("Signing failed", {
+                        title:   "Error",
+                        details: error.message
+                    });
+                });
         },
 
         // ── PDF Viewer ─────────────────────────────────────────────────────
