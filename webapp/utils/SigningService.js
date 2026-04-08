@@ -29,7 +29,8 @@ sap.ui.define([], () => {
                 attachmentId: attachment.id,
                 fileName:     attachment.fileName,
                 objectId:     context.cloudId,
-                userName:     context.userName
+                userName:     context.userName,
+                authToken:    context.authToken   // passed to SecSignService when target = 'secsign' or 'both'
             };
 
             console.log("[SigningService] Triggering signing | payload:", payload);

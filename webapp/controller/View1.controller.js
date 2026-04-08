@@ -3,23 +3,26 @@ sap.ui.define([
     "sap/ui/model/json/JSONModel",
     "sap/m/MessageBox",
     "mobileappsignport/utils/ContextService",
+    "mobileappsignport/utils/AttachmentService",
     "mobileappsignport/utils/SigningService"
-], (Controller, JSONModel, MessageBox, ContextService, SigningService) => {
+], (Controller, JSONModel, MessageBox, ContextService, AttachmentService, SigningService) => {
     "use strict";
 
     return Controller.extend("mobileappsignport.controller.View1", {
 
+        // ── Init ───────────────────────────────────────────────────────────
+
         onInit() {
             this.getView().setModel(new JSONModel({
-                busy: true,
-                contextLoaded: false,
-                showError: false,
-                context: {},
-                attachments: [],
-                attachmentsBusy: false,
+                busy:             true,
+                contextLoaded:    false,
+                showError:        false,
+                context:          {},
+                attachments:      [],
+                attachmentsBusy:  false,
                 attachmentsLoaded: false,
-                pdfUrl: null,       // set → PDF panel appears; null → hidden
-                pdfFileName: ""
+                pdfUrl:           null,
+                pdfFileName:      ""
             }), "view");
 
             this._loadContext();
@@ -37,21 +40,19 @@ sap.ui.define([
                 oModel.setProperty("/contextLoaded", true);
                 oModel.setProperty("/busy", false);
 
-                console.log("FSM context loaded:", {
-                    source: context.source,
-                    user: context.userName,
-                    objectType: context.objectType,
-                    cloudId: context.cloudId
+                console.log("[View1] Context loaded:", {
+                    source: context.source, user: context.userName,
+                    objectType: context.objectType, cloudId: context.cloudId
                 });
 
                 if (context.cloudId && context.cloudId !== "N/A") {
                     this._loadAttachments(context.cloudId);
                 } else {
-                    console.warn("No cloudId in context – skipping attachment load");
+                    console.warn("[View1] No cloudId – skipping attachment load");
                 }
 
             } catch (error) {
-                console.warn("FSM context not available:", error.message);
+                console.warn("[View1] Context unavailable:", error.message);
                 oModel.setProperty("/showError", true);
                 oModel.setProperty("/busy", false);
             }
@@ -62,55 +63,18 @@ sap.ui.define([
         async _loadAttachments(objectId) {
             const oModel = this.getView().getModel("view");
             oModel.setProperty("/attachmentsBusy", true);
-            console.log("Loading attachments for objectId:", objectId);
 
             try {
-                const response = await fetch(`/api/attachments/${encodeURIComponent(objectId)}`);
-                if (!response.ok) throw new Error(`HTTP ${response.status}`);
-
-                const attachments = await response.json();
-                console.log("Attachments received:", attachments.length, attachments);
-
-                const enriched = await Promise.all(
-                    attachments.map(att => this._fetchAttachmentContent(att))
-                );
-
-                oModel.setProperty("/attachments", enriched);
+                const attachments = await AttachmentService.loadAttachments(objectId);
+                oModel.setProperty("/attachments", attachments);
                 oModel.setProperty("/attachmentsLoaded", true);
-                oModel.setProperty("/attachmentsBusy", false);
 
             } catch (error) {
-                console.error("Failed to load attachments:", error.message);
-                oModel.setProperty("/attachmentsBusy", false);
+                console.error("[View1] Attachment load failed:", error.message);
                 oModel.setProperty("/attachmentsLoaded", true);
-            }
-        },
 
-        async _fetchAttachmentContent(attachment) {
-            try {
-                const response = await fetch(`/api/attachment-content/${encodeURIComponent(attachment.id)}`);
-
-                if (!response.ok) {
-                    console.warn(`Content fetch failed for ${attachment.id}: HTTP ${response.status}`);
-                    return { ...attachment, content: "N/A", contentType: "application/pdf" };
-                }
-
-                const result = await response.json();
-                console.log(`Content fetched for ${attachment.id} | size: ${result.base64?.length} chars`);
-
-                const preview = result.base64 ? result.base64.substring(0, 60) + "..." : "N/A";
-
-                return {
-                    ...attachment,
-                    content:     preview,
-                    contentFull: result.base64,
-                    contentType: result.contentType || "application/pdf",
-                    signed:      false
-                };
-
-            } catch (error) {
-                console.error(`Content fetch error for ${attachment.id}:`, error.message);
-                return { ...attachment, content: "Error", contentType: "application/pdf" };
+            } finally {
+                oModel.setProperty("/attachmentsBusy", false);
             }
         },
 
@@ -123,24 +87,21 @@ sap.ui.define([
             const oAttachment = oCtx.getObject();
             const oContext    = oModel.getProperty("/context");
 
-            console.log("[View1] Sign pressed | file:", oAttachment.fileName, "| id:", oAttachment.id);
+            console.log("[View1] Sign pressed | file:", oAttachment.fileName);
 
             SigningService.triggerSigning(oAttachment, oContext)
                 .then(result => {
-                    console.log("[View1] Signing trigger OK | result:", result);
-
+                    console.log("[View1] Signing OK | result:", result);
                     MessageBox.success("Signed!", {
                         title:   "Document Signed",
                         details: JSON.stringify(result, null, 2),
                         onClose: () => {
                             oModel.setProperty(sPath + "/signed", true);
-                            console.log("[View1] Row marked signed:", oAttachment.fileName);
                         }
                     });
                 })
                 .catch(error => {
-                    console.error("[View1] Signing trigger failed:", error.message);
-
+                    console.error("[View1] Signing failed:", error.message);
                     MessageBox.error("Signing failed", {
                         title:   "Error",
                         details: error.message
@@ -151,19 +112,14 @@ sap.ui.define([
         // ── PDF Viewer ─────────────────────────────────────────────────────
 
         onFileNamePress(oEvent) {
-            const oCtx        = oEvent.getSource().getBindingContext("view");
-            const oAttachment = oCtx.getObject();
+            const oAttachment = oEvent.getSource().getBindingContext("view").getObject();
             const oModel      = this.getView().getModel("view");
 
-            // Point PDFViewer directly at the backend route that pipes the binary.
-            // Avoids Blob URL iframe security issues inside SAP UI5 PDFViewer.
             const pdfUrl = `/api/attachment-pdf/${encodeURIComponent(oAttachment.id)}`;
-
             oModel.setProperty("/pdfUrl", pdfUrl);
             oModel.setProperty("/pdfFileName", oAttachment.fileName);
 
-            console.log("PDF viewer opened for:", oAttachment.fileName, "| url:", pdfUrl);
-
+            console.log("[View1] PDF opened:", oAttachment.fileName);
             this.byId("pdfPanel").getDomRef()?.scrollIntoView({ behavior: "smooth" });
         },
 

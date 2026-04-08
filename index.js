@@ -13,10 +13,12 @@
  * @requires express
  */
 
-const express    = require('express');
-const path       = require('path');
-const FSMService = require('./utils/FSMService');
-const CIService  = require('./utils/CIService');
+const express         = require('express');
+const path            = require('path');
+const FSMService      = require('./utils/FSMService');
+const CIService       = require('./utils/CIService');
+const SecSignService  = require('./utils/SecSignService');
+const { SIGNING_TARGET } = require('./utils/signing.config');
 
 const app = express();
 
@@ -207,27 +209,50 @@ app.get('/api/attachment-pdf/:attachmentId', async (req, res) => {
  * POST /api/signing/trigger
  *
  * Called when the user presses "Sign PDF".
- * 1. Fetches the raw PDF buffer from FSM
- * 2. Forwards as multipart/form-data to SAP CI via CI_BASIC_CONNECT destination
+ * Routing is controlled by SIGNING_TARGET in utils/signing.config.js:
+ *   'ci'      → SAP CI only  (current)
+ *   'secsign' → SecSign only
+ *   'both'    → CI + SecSign in parallel
  *
- * Body: { attachmentId, fileName, objectId, userName }
+ * Body: { attachmentId, fileName, objectId, userName, authToken }
  */
 app.post('/api/signing/trigger', async (req, res) => {
-    const { attachmentId, fileName, objectId, userName } = req.body;
+    const { attachmentId, fileName, objectId, userName, authToken } = req.body;
 
-    console.log(`[API] POST /api/signing/trigger | file: ${fileName} | attachmentId: ${attachmentId} | object: ${objectId} | user: ${userName}`);
+    console.log(`[API] POST /api/signing/trigger | target: ${SIGNING_TARGET} | file: ${fileName} | user: ${userName}`);
 
     try {
-        // Step 1: fetch PDF binary from FSM
-        console.log(`[API] Fetching PDF buffer from FSM for attachmentId: ${attachmentId}`);
+        // Step 1: fetch PDF binary from FSM (needed by all targets)
+        console.log(`[API] Fetching PDF buffer | attachmentId: ${attachmentId}`);
         const pdfBuffer = await FSMService.getAttachmentBuffer(attachmentId);
         console.log(`[API] PDF buffer ready | size: ${pdfBuffer.length} bytes`);
 
-        // Step 2: forward to CI as multipart/form-data
-        const result = await CIService.triggerSigning({ pdfBuffer, fileName, userName, attachmentId });
+        const signingParams = { pdfBuffer, fileName, userName, authToken, attachmentId };
+        let result;
 
-        console.log(`[API] Signing trigger successful`);
-        return res.json({ success: true, data: result });
+        // Step 2: route to the configured target(s)
+        if (SIGNING_TARGET === 'ci') {
+            console.log('[API] Routing → SAP CI');
+            result = await CIService.triggerSigning(signingParams);
+
+        } else if (SIGNING_TARGET === 'secsign') {
+            console.log('[API] Routing → SecSign');
+            result = await SecSignService.triggerSigning(signingParams);
+
+        } else if (SIGNING_TARGET === 'both') {
+            console.log('[API] Routing → SAP CI + SecSign (parallel)');
+            const [ciResult, secSignResult] = await Promise.all([
+                CIService.triggerSigning(signingParams),
+                SecSignService.triggerSigning(signingParams)
+            ]);
+            result = { ci: ciResult, secSign: secSignResult };
+
+        } else {
+            throw new Error(`Unknown SIGNING_TARGET: '${SIGNING_TARGET}'. Must be 'ci', 'secsign', or 'both'.`);
+        }
+
+        console.log(`[API] Signing trigger successful | target: ${SIGNING_TARGET}`);
+        return res.json({ success: true, target: SIGNING_TARGET, data: result });
 
     } catch (error) {
         console.error(`[API] Signing trigger failed:`, error.message);
