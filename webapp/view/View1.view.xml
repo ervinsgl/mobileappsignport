@@ -46,10 +46,12 @@
                 <!-- ── Attachments table ───────────────────────────────── -->
                 <Table
                     id="attachmentsTable"
+                    mode="MultiSelect"
                     items="{view>/attachments}"
                     busy="{view>/attachmentsBusy}"
                     busyIndicatorDelay="0"
                     noDataText="No attachments found"
+                    selectionChange="onSelectionChange"
                     class="sapUiSmallMarginBottom">
 
                     <headerToolbar>
@@ -58,6 +60,13 @@
                             <ToolbarSpacer />
                             <ObjectStatus
                                 text="{= ${view>/attachments}.length + ' item(s)'}"
+                                visible="{view>/attachmentsLoaded}" />
+                            <Button
+                                text="{= 'Merge PDFs (' + ${view>/selectedCount} + ')'}"
+                                icon="sap-icon://combine"
+                                type="Emphasized"
+                                enabled="{= ${view>/selectedCount} >= 2 }"
+                                press="onMergePress"
                                 visible="{view>/attachmentsLoaded}" />
                         </OverflowToolbar>
                     </headerToolbar>
@@ -95,13 +104,11 @@
                     <items>
                         <ColumnListItem>
                             <cells>
-                                <!-- Sign button -->
                                 <Button
                                     text="{= ${view>signed} ? 'Signed!' : 'Sign PDF' }"
                                     type="{= ${view>signed} ? 'Success' : 'Emphasized' }"
                                     enabled="{= !${view>signed} }"
                                     press="onSignPress" />
-                                <!-- File name → opens PDF inline -->
                                 <Link
                                     text="{view>fileName}"
                                     press="onFileNamePress"
@@ -110,7 +117,6 @@
                                 <Text text="{view>id}" />
                                 <Text text="{view>content}" wrapping="false" />
                                 <Text text="{view>contentType}" />
-                                <!-- Context fields – absolute paths, same value every row -->
                                 <Text text="{view>/context/userName}" />
                                 <Text text="{view>/context/language}" />
                                 <Text text="{view>/context/authToken}" wrapping="false" />

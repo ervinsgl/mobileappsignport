@@ -22,6 +22,7 @@ sap.ui.define([
                 attachments:       [],
                 attachmentsBusy:   false,
                 attachmentsLoaded: false,
+                selectedCount:     0,
                 pdfUrl:            null,
                 pdfFileName:       ""
             }), "view");
@@ -169,6 +170,62 @@ sap.ui.define([
                 + (sessionKey ? `?session=${encodeURIComponent(sessionKey)}` : "")
                 + window.location.hash;
             window.history.replaceState({}, document.title, cleanUrl);
+        },
+
+        // ── Merge ──────────────────────────────────────────────────────────
+
+        onSelectionChange() {
+            const oTable  = this.byId("attachmentsTable");
+            const count   = oTable.getSelectedItems().length;
+            this.getView().getModel("view").setProperty("/selectedCount", count);
+            console.log("[View1] Selection changed | selected:", count);
+        },
+
+        onMergePress() {
+            const oTable   = this.byId("attachmentsTable");
+            const oModel   = this.getView().getModel("view");
+            const selected = oTable.getSelectedItems();
+
+            const attachmentIds = selected.map(item =>
+                item.getBindingContext("view").getProperty("id")
+            );
+            const fileNames = selected.map(item =>
+                item.getBindingContext("view").getProperty("fileName")
+            );
+
+            console.log("[View1] Merge pressed | ids:", attachmentIds, "| files:", fileNames);
+
+            oModel.setProperty("/pdfUrl", null);
+            oModel.setProperty("/pdfFileName", "Merging...");
+            oModel.setProperty("/attachmentsBusy", true);
+
+            fetch("/api/attachments/merge", {
+                method:  "POST",
+                headers: { "Content-Type": "application/json" },
+                body:    JSON.stringify({ attachmentIds })
+            })
+            .then(response => {
+                if (!response.ok) {
+                    return response.json().then(err => { throw new Error(err.message); });
+                }
+                return response.json();
+            })
+            .then(result => {
+                // Backend returns { url: "/api/attachments/merged/<uuid>" }
+                // Use it directly as PDFViewer source – plain HTTP URLs work in all browsers
+                oModel.setProperty("/pdfUrl", result.url);
+                oModel.setProperty("/pdfFileName", `Merged (${fileNames.join(" + ")})`);
+                oModel.setProperty("/attachmentsBusy", false);
+
+                console.log("[View1] Merge complete | url:", result.url, "| files:", fileNames.join(", "));
+                this.byId("pdfPanel").getDomRef()?.scrollIntoView({ behavior: "smooth" });
+            })
+            .catch(error => {
+                console.error("[View1] Merge failed:", error.message);
+                oModel.setProperty("/attachmentsBusy", false);
+                oModel.setProperty("/pdfFileName", "");
+                sap.m.MessageBox.error("Merge failed: " + error.message);
+            });
         },
 
         // ── PDF Viewer ─────────────────────────────────────────────────────

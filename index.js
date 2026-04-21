@@ -15,6 +15,7 @@
 
 const express         = require('express');
 const path            = require('path');
+const { PDFDocument } = require('pdf-lib');
 const FSMService      = require('./utils/FSMService');
 const CIService       = require('./utils/CIService');
 const SecSignService  = require('./utils/SecSignService');
@@ -160,6 +161,94 @@ app.get('/api/attachments/:objectId', async (req, res) => {
         console.error(`[API] Error fetching attachments for ${objectId}:`, error.message);
         return res.status(500).json({ message: 'Failed to fetch attachments', error: error.message });
     }
+});
+
+/**
+ * Temporary in-memory store for merged PDFs.
+ * Key: UUID, Value: { buffer, createdAt }
+ * Entries expire after MERGED_PDF_TTL_MS and are cleaned up every 10 min.
+ */
+const mergedPdfCache   = {};
+const MERGED_PDF_TTL_MS = 10 * 60 * 1000; // 10 minutes
+
+setInterval(() => {
+    const cutoff = Date.now() - MERGED_PDF_TTL_MS;
+    let removed = 0;
+    Object.keys(mergedPdfCache).forEach(key => {
+        if (mergedPdfCache[key].createdAt < cutoff) {
+            delete mergedPdfCache[key];
+            removed++;
+        }
+    });
+    if (removed > 0) console.log(`[API] Merged PDF cache cleanup: removed ${removed}`);
+}, 10 * 60 * 1000);
+
+/**
+ * POST /api/attachments/merge
+ *
+ * Fetches multiple PDF attachments from FSM and merges them into one PDF.
+ * Stores the result in a temporary cache and returns a plain HTTP URL.
+ * The URL is then used directly as the PDFViewer source (blob URLs don't
+ * work inside the PDFViewer's internal iframe).
+ *
+ * Body:    { attachmentIds: ["id1", "id2", ...] }
+ * Returns: { url: "/api/attachments/merged/<uuid>" }
+ */
+app.post('/api/attachments/merge', async (req, res) => {
+    const { attachmentIds } = req.body;
+
+    if (!attachmentIds || !Array.isArray(attachmentIds) || attachmentIds.length < 2) {
+        return res.status(400).json({ message: 'At least 2 attachmentIds required' });
+    }
+
+    console.log(`[API] POST /api/attachments/merge | ids: ${attachmentIds.join(', ')}`);
+
+    try {
+        // Fetch all PDF buffers from FSM in parallel
+        const buffers = await Promise.all(
+            attachmentIds.map(id => FSMService.getAttachmentBuffer(id))
+        );
+        console.log(`[API] Buffers fetched | sizes: ${buffers.map(b => b.length + ' bytes').join(', ')}`);
+
+        // Merge with pdf-lib
+        const merged = await PDFDocument.create();
+        for (let i = 0; i < buffers.length; i++) {
+            const doc   = await PDFDocument.load(buffers[i]);
+            const pages = await merged.copyPages(doc, doc.getPageIndices());
+            pages.forEach(p => merged.addPage(p));
+            console.log(`[API] Added ${attachmentIds[i]} | pages: ${doc.getPageCount()}`);
+        }
+
+        const mergedBuffer = Buffer.from(await merged.save());
+        console.log(`[API] Merge complete | total pages: ${merged.getPageCount()} | size: ${mergedBuffer.length} bytes`);
+
+        // Store in temp cache, return a plain HTTP URL for PDFViewer
+        const uuid = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+        mergedPdfCache[uuid] = { buffer: mergedBuffer, createdAt: Date.now() };
+
+        const url = `/api/attachments/merged/${uuid}`;
+        console.log(`[API] Merged PDF cached at: ${url}`);
+        return res.json({ url });
+
+    } catch (error) {
+        console.error(`[API] Merge failed:`, error.message);
+        return res.status(500).json({ message: 'Failed to merge PDFs', error: error.message });
+    }
+});
+
+/**
+ * GET /api/attachments/merged/:uuid
+ *
+ * Serves a previously merged PDF from the temp cache.
+ */
+app.get('/api/attachments/merged/:uuid', (req, res) => {
+    const cached = mergedPdfCache[req.params.uuid];
+    if (!cached) {
+        return res.status(404).json({ message: 'Merged PDF not found or expired' });
+    }
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', 'inline; filename="merged.pdf"');
+    res.send(cached.buffer);
 });
 
 /**
