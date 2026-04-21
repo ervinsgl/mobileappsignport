@@ -30,7 +30,10 @@ sap.ui.define([], () => {
                 fileName:     attachment.fileName,
                 objectId:     context.cloudId,
                 userName:     context.userName,
-                authToken:    context.authToken   // passed to SecSignService when target = 'secsign' or 'both'
+                authToken:    context.authToken,
+                // Pass the full current URL so the signing portal redirects back
+                // with the session key (?session=xxx) intact
+                returnUrl:    window.location.href
             };
 
             console.log("[SigningService] Triggering signing | payload:", payload);

@@ -217,7 +217,7 @@ app.get('/api/attachment-pdf/:attachmentId', async (req, res) => {
  * Body: { attachmentId, fileName, objectId, userName, authToken }
  */
 app.post('/api/signing/trigger', async (req, res) => {
-    const { attachmentId, fileName, objectId, userName, authToken } = req.body;
+    const { attachmentId, fileName, objectId, userName, authToken, returnUrl } = req.body;
 
     console.log(`[API] POST /api/signing/trigger | target: ${SIGNING_TARGET} | file: ${fileName} | user: ${userName}`);
 
@@ -252,7 +252,37 @@ app.post('/api/signing/trigger', async (req, res) => {
         }
 
         console.log(`[API] Signing trigger successful | target: ${SIGNING_TARGET}`);
-        return res.json({ success: true, target: SIGNING_TARGET, data: result });
+
+        // Normalise result to always contain workflowstepurl.
+        // Real SecSign returns it directly. CPI mock currently returns "Body" –
+        // in that case we inject a mock URL pointing to our own mock-signing page.
+        // Use returnUrl from frontend (includes ?session=xxx) so the app restores
+        // its full context when the signing portal redirects back.
+        const appBaseUrl   = `${req.protocol}://${req.get('host')}`;
+        const appReturnUrl = returnUrl || `${appBaseUrl}/`;
+
+        let workflowstepurl = result?.workflowstepurl || result?.data?.workflowstepurl;
+
+        if (!workflowstepurl) {
+            // CPI hasn't returned a real URL yet – use mock page
+            workflowstepurl = `${appBaseUrl}/mock-signing.html`
+                + `?portfolioId=MOCK-${Date.now()}`
+                + `&attachmentId=${encodeURIComponent(attachmentId)}`
+                + `&fileName=${encodeURIComponent(fileName)}`
+                + `&redirectUrl=${encodeURIComponent(appReturnUrl)}`
+                + `&redirectDeclineUrl=${encodeURIComponent(appReturnUrl)}`;
+
+            console.log(`[API] No workflowstepurl – injecting mock URL: ${workflowstepurl}`);
+            console.log(`[API] Return URL: ${appReturnUrl}`);
+        }
+
+        return res.json({
+            success:         true,
+            target:          SIGNING_TARGET,
+            workflowstepurl: workflowstepurl,
+            portfolioid:     result?.portfolioid || result?.data?.portfolioid || null,
+            data:            result
+        });
 
     } catch (error) {
         console.error(`[API] Signing trigger failed:`, error.message);
