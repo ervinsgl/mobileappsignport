@@ -31,7 +31,7 @@ sap.ui.define([], () => {
                 returnUrl:    window.location.href
             };
 
-            console.log("[SigningService] Triggering signing | payload:", payload);
+            console.log("[SigningService] Triggering signing new | payload:", payload);
 
             return fetch("/api/signing/trigger", {
                 method:  "POST",

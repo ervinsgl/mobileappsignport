@@ -12,6 +12,6 @@
  * No other files need to change.
  */
 
-const SIGNING_TARGET = 'ci'; // ← change this when ready
+const SIGNING_TARGET = 'secsign'; // ← 'ci' | 'secsign' | 'both'
 
 module.exports = { SIGNING_TARGET };

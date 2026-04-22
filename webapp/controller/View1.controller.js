@@ -117,12 +117,26 @@ sap.ui.define([
         // ── Return from signing portal ─────────────────────────────────────
 
         _checkSigningReturn() {
-            const params      = new URLSearchParams(window.location.search);
-            const signed      = params.get("signed");
-            const portfolioId = params.get("portfolioId");
+            const params = new URLSearchParams(window.location.search);
+
+            // Log full URL and ALL params on every load so nothing from SecSign redirect is missed
+            console.log("[View1] _checkSigningReturn | full URL:", window.location.href);
+            console.log("[View1] _checkSigningReturn | search string:", window.location.search || "(empty)");
+
+            const allParams = {};
+            params.forEach((value, key) => { allParams[key] = value; });
+            console.log("[View1] _checkSigningReturn | all params:", JSON.stringify(allParams, null, 2));
+
+            const signed       = params.get("signed");
+            const portfolioId  = params.get("portfolioId");
             const attachmentId = params.get("attachmentId");
 
-            if (signed !== "true") return;
+            console.log("[View1] _checkSigningReturn | signed:", signed, "| portfolioId:", portfolioId, "| attachmentId:", attachmentId);
+
+            if (signed !== "true") {
+                console.log("[View1] _checkSigningReturn | no signed=true param – normal load");
+                return;
+            }
 
             console.log("[View1] Returned from signing portal | portfolioId:", portfolioId, "| attachmentId:", attachmentId);
 

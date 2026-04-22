@@ -53,47 +53,55 @@ class CIService {
      * @param {string} params.attachmentId - FSM attachment ID (for logging)
      * @returns {Promise<Object>} SecSign response: { portfolioid, workflowstepid, workflowstepurl, ... }
      */
-    async triggerSigning({ pdfBuffer, fileName, userName, attachmentId }) {
+    async triggerSigning({ pdfBuffer, fileName, userName, attachmentId, returnUrl }) {
         const dest       = await this._getDestConfig();
         const authHeader = this._basicAuth(dest.User, dest.Password);
 
-        // SPWorkflowStep – ad-hoc workflow, action must be specified per the docs
         const steps = JSON.stringify([{
             action:  "simple-signature",
             signers: [{ name: userName, signer_type: "user" }]
         }]);
 
-        // Build multipart/form-data matching SecSign SPWorkflow/Start API
+        // Redirect back to the app after signing completes in SecSign portal
+        const redirectUrl = returnUrl || 'https://mobileappsignport-webcontainer-test-op.cfapps.eu10.hana.ondemand.com/';
+
         const form = new FormData();
-        form.append('filenames',      pdfBuffer, { filename: fileName, contentType: 'application/pdf' });
-        form.append('steps',          steps);
-        form.append('workflowname',   'Test Workflow');
-        form.append('sigposbysigner', 'true');
-        // NOTE: 'informsignertosign' removed – not valid for ad-hoc /SPWorkflow/Start
+        form.append('filenames',       pdfBuffer, { filename: fileName, contentType: 'application/pdf' });
+        form.append('steps',           steps);
+        form.append('sigposbysigner',  'true');
+        form.append('redirecturl',     redirectUrl);
+        form.append('redirecttimeout', '3');
 
         console.log(`[CIService] ── Signing trigger ──────────────────────────`);
-        console.log(`[CIService] URL:          ${dest.URL}`);
-        console.log(`[CIService] CI User:      ${dest.User}`);
-        console.log(`[CIService] File:         ${fileName}`);
-        console.log(`[CIService] AttachmentId: ${attachmentId}`);
-        console.log(`[CIService] Signer:       ${userName}`);
-        console.log(`[CIService] Steps:        ${steps}`);
-        console.log(`[CIService] PDF size:     ${pdfBuffer.length} bytes`);
+        console.log(`[CIService] URL:             ${dest.URL}`);
+        console.log(`[CIService] CI User:         ${dest.User}`);
+        console.log(`[CIService] File:            ${fileName}`);
+        console.log(`[CIService] AttachmentId:    ${attachmentId}`);
+        console.log(`[CIService] Signer:          ${userName}`);
+        console.log(`[CIService] Steps:           ${steps}`);
+        console.log(`[CIService] PDF size:        ${pdfBuffer.length} bytes`);
+        console.log(`[CIService] Redirect URL:    ${redirectUrl}`);
+        console.log(`[CIService] Redirect timeout: 3s`);
 
         const response = await axios.post(dest.URL, form, {
             headers: {
-                ...form.getHeaders(),   // Content-Type: multipart/form-data; boundary=...
+                ...form.getHeaders(),
                 'Authorization': authHeader
             }
         });
 
         console.log(`[CIService] ── Response ─────────────────────────────────`);
-        console.log(`[CIService] HTTP status:      ${response.status}`);
-        console.log(`[CIService] portfolioid:      ${response.data?.portfolioid}`);
-        console.log(`[CIService] workflowstepid:   ${response.data?.workflowstepid}`);
-        console.log(`[CIService] workflowstepurl:  ${response.data?.workflowstepurl}`);
-        console.log(`[CIService] isended:          ${response.data?.isended}`);
-        console.log(`[CIService] iserror:          ${response.data?.iserror}`);
+        console.log(`[CIService] HTTP status:        ${response.status}`);
+        console.log(`[CIService] Full response:      ${JSON.stringify(response.data, null, 2)}`);
+        console.log(`[CIService] portfolioid:        ${response.data?.portfolioid}`);
+        console.log(`[CIService] workflowid:         ${response.data?.workflowid}`);
+        console.log(`[CIService] workflowstepid:     ${response.data?.workflowstepid}`);
+        console.log(`[CIService] workflowstepurl:    ${response.data?.workflowstepurl}`);
+        console.log(`[CIService] portfoliostate:     ${response.data?.portfoliostate}`);
+        console.log(`[CIService] portfoliostatename: ${response.data?.portfoliostatename}`);
+        console.log(`[CIService] isended:            ${response.data?.isended}`);
+        console.log(`[CIService] iserror:            ${response.data?.iserror}`);
+        console.log(`[CIService] ────────────────────────────────────────────`);
 
         return response.data;
     }

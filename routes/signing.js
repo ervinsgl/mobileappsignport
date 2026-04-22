@@ -36,7 +36,7 @@ router.post('/trigger', async (req, res) => {
         const pdfBuffer = await FSMService.getAttachmentBuffer(attachmentId);
         console.log(`[Signing] PDF buffer ready | size: ${pdfBuffer.length} bytes`);
 
-        const signingParams = { pdfBuffer, fileName, userName, authToken, attachmentId };
+        const signingParams = { pdfBuffer, fileName, userName, authToken, attachmentId, returnUrl };
         let result;
 
         // Step 2: route to configured target
@@ -62,15 +62,15 @@ router.post('/trigger', async (req, res) => {
 
         console.log(`[Signing] Trigger successful | target: ${SIGNING_TARGET}`);
 
-        // Step 3: normalise workflowstepurl
-        // Real SecSign returns it directly; CPI mock doesn't yet –
-        // inject mock URL using returnUrl so session key is preserved on redirect back.
-        const appBaseUrl   = `${req.protocol}://${req.get('host')}`;
-        const appReturnUrl = returnUrl || `${appBaseUrl}/`;
-
+        // Step 3: resolve workflowstepurl
+        // SecSign returns it directly in the response.
+        // CI mock doesn't return one yet – inject mock URL only for 'ci' target.
         let workflowstepurl = result?.workflowstepurl || result?.data?.workflowstepurl;
 
-        if (!workflowstepurl) {
+        if (!workflowstepurl && SIGNING_TARGET === 'ci') {
+            const appBaseUrl   = `${req.protocol}://${req.get('host')}`;
+            const appReturnUrl = returnUrl || `${appBaseUrl}/`;
+
             workflowstepurl = `${appBaseUrl}/mock-signing.html`
                 + `?portfolioId=MOCK-${Date.now()}`
                 + `&attachmentId=${encodeURIComponent(attachmentId)}`
@@ -78,9 +78,17 @@ router.post('/trigger', async (req, res) => {
                 + `&redirectUrl=${encodeURIComponent(appReturnUrl)}`
                 + `&redirectDeclineUrl=${encodeURIComponent(appReturnUrl)}`;
 
-            console.log(`[Signing] No workflowstepurl – injecting mock: ${workflowstepurl}`);
-            console.log(`[Signing] Return URL: ${appReturnUrl}`);
+            console.log(`[Signing] No workflowstepurl from CI – injecting mock: ${workflowstepurl}`);
         }
+
+        if (!workflowstepurl) {
+            console.error(`[Signing] ERROR: no workflowstepurl in response | target: ${SIGNING_TARGET}`);
+            console.error(`[Signing] Full result: ${JSON.stringify(result, null, 2)}`);
+            return res.status(500).json({ success: false, message: 'No workflowstepurl returned from signing service' });
+        }
+
+        console.log(`[Signing] workflowstepurl resolved: ${workflowstepurl}`);
+        console.log(`[Signing] portfolioid: ${result?.portfolioid}`);
 
         return res.json({
             success:         true,
