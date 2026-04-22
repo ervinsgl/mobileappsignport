@@ -4,12 +4,13 @@
  * Backend service for SAP FSM API integration.
  * Scoped to the document signing app – covers only what this app needs:
  *
- *   - Core HTTP helpers (GET, PATCH via Data API; Query API)
- *   - Activity read / update  (activity details, UDF updates after signing)
- *   - UDF meta lookup         (resolve UDF external IDs for signing status fields)
- *   - Attachments             (list attachments linked to an object)
+ *   - Core HTTP helpers     (GET, PATCH via Data API; Query API)
+ *   - Activity              (read + update for signing UDF writeback)
+ *   - UDF Meta              (resolve UDF external IDs)
+ *   - Attachments           (list, content, binary buffer)
  *
- * @file FSMService.js
+ * @file utils/fsm/FSMService.js
+ * @module utils/fsm/FSMService
  * @requires axios
  * @requires ./DestinationService
  * @requires ./TokenCache
@@ -45,7 +46,7 @@ class FSMService {
             );
             return response.data;
         } catch (error) {
-            console.error('FSMService GET error:', error.response?.data || error.message);
+            console.error('[FSMService] GET error:', error.response?.data || error.message);
             throw error;
         }
     }
@@ -67,7 +68,7 @@ class FSMService {
             );
             return response.data;
         } catch (error) {
-            console.error('FSMService PATCH error:', error.response?.data || error.message);
+            console.error('[FSMService] PATCH error:', error.response?.data || error.message);
             throw error;
         }
     }
@@ -75,7 +76,7 @@ class FSMService {
     /**
      * GET request to FSM Query API (/api/query/v1).
      * @param {string} query - FSM query string
-     * @param {string} dtos  - DTO version string, e.g. 'Activity.40'
+     * @param {string} dtos  - DTO version string, e.g. 'Attachment.8'
      */
     async makeQueryRequest(query, dtos) {
         try {
@@ -86,7 +87,7 @@ class FSMService {
             );
             return response.data;
         } catch (error) {
-            console.error('FSMService Query error:', error.response?.data || error.message);
+            console.error('[FSMService] Query error:', error.response?.data || error.message);
             throw error;
         }
     }
@@ -128,7 +129,6 @@ class FSMService {
 
     /**
      * Resolve a UDF meta ID to its externalId string.
-     * Useful when writing back UDF values by external ID.
      * @param {string} udfMetaId
      * @returns {Promise<string|null>}
      */
@@ -139,7 +139,7 @@ class FSMService {
             if (!data.data || data.data.length === 0) return null;
             return data.data[0]?.w?.externalId || null;
         } catch (error) {
-            console.error('FSMService UDF meta error:', error.message);
+            console.error('[FSMService] UDF meta error:', error.message);
             return null;
         }
     }
@@ -149,28 +149,27 @@ class FSMService {
     // =========================================================================
 
     /**
-     * Get all attachments linked to a given FSM object (Activity, ServiceCall, …).
+     * Get all attachments linked to a given FSM object.
      * Query: SELECT w FROM Attachment w WHERE w.object.objectId = '<objectId>'
      *
-     * @param {string} objectId - from context.cloudId
+     * @param {string} objectId - from context cloudId
      * @returns {Promise<Array<{ id, fileName, type }>>}
      */
     async getAttachmentsForObject(objectId) {
         try {
             const query = `SELECT w FROM Attachment w WHERE w.object.objectId = '${objectId}'`;
-            console.log(`FSMService: Fetching attachments for objectId: ${objectId}`);
+            console.log(`[FSMService] Fetching attachments | objectId: ${objectId}`);
 
             const data = await this.makeQueryRequest(query, 'Attachment.8');
-            console.log(`FSMService: Raw attachment response:`, JSON.stringify(data, null, 2));
+            console.log(`[FSMService] Raw attachment response:`, JSON.stringify(data, null, 2));
 
             if (!data.data || data.data.length === 0) {
-                console.log(`FSMService: No attachments found for objectId: ${objectId}`);
+                console.log(`[FSMService] No attachments found for objectId: ${objectId}`);
                 return [];
             }
 
             const attachments = data.data.map(item => {
                 const w = item.w;
-                console.log(`FSMService: Attachment item:`, JSON.stringify(w, null, 2));
                 return {
                     id:       w.id       || 'N/A',
                     fileName: w.fileName || 'N/A',
@@ -178,51 +177,48 @@ class FSMService {
                 };
             });
 
-            console.log(`FSMService: Mapped attachments (${attachments.length}):`, attachments);
+            console.log(`[FSMService] Mapped ${attachments.length} attachment(s):`, attachments);
             return attachments;
 
         } catch (error) {
-            console.error('FSMService: Attachments error:', error.response?.data || error.message);
+            console.error('[FSMService] Attachments error:', error.response?.data || error.message);
             throw error;
         }
     }
 
     /**
-     * Fetch the binary content of an attachment from FSM.
-     * Endpoint: GET /api/data/v4/Attachment/{attachmentId}/content
-     *
+     * Fetch attachment binary as base64 + contentType.
+     * Used for the content preview column in the table.
      * @param {string} attachmentId
      * @returns {Promise<{ base64: string, contentType: string }>}
      */
     async getAttachmentContent(attachmentId) {
         try {
             const { dest, token } = await this._auth();
-            console.log(`FSMService: Fetching content for attachmentId: ${attachmentId}`);
-
             const response = await axios.get(
                 `${dest.URL}/api/data/v4/Attachment/${attachmentId}/content`,
                 {
                     params:       this._accountParams(dest),
                     headers:      this._headers(dest, token),
-                    responseType: 'arraybuffer'   // receive raw binary
+                    responseType: 'arraybuffer'
                 }
             );
 
             const base64      = Buffer.from(response.data).toString('base64');
             const contentType = response.headers['content-type'] || 'application/pdf';
 
-            console.log(`FSMService: Attachment content fetched | size: ${response.data.byteLength} bytes | type: ${contentType}`);
+            console.log(`[FSMService] Attachment content | id: ${attachmentId} | size: ${response.data.byteLength} bytes | type: ${contentType}`);
             return { base64, contentType };
 
         } catch (error) {
-            console.error(`FSMService: Attachment content error for ${attachmentId}:`, error.response?.data || error.message);
+            console.error(`[FSMService] Attachment content error for ${attachmentId}:`, error.response?.data || error.message);
             throw error;
         }
     }
 
     /**
      * Fetch attachment binary as a raw Buffer.
-     * Used by the /api/attachment-pdf route to pipe directly to the browser.
+     * Used by attachment-pdf route (PDFViewer) and signing trigger (send to CI/SecSign).
      * @param {string} attachmentId
      * @returns {Promise<Buffer>}
      */
@@ -237,13 +233,17 @@ class FSMService {
                     responseType: 'arraybuffer'
                 }
             );
-            console.log(`FSMService: Buffer fetched for ${attachmentId} | size: ${response.data.byteLength} bytes`);
+            console.log(`[FSMService] Attachment buffer | id: ${attachmentId} | size: ${response.data.byteLength} bytes`);
             return Buffer.from(response.data);
         } catch (error) {
-            console.error(`FSMService: getAttachmentBuffer error for ${attachmentId}:`, error.response?.data || error.message);
+            console.error(`[FSMService] Attachment buffer error for ${attachmentId}:`, error.response?.data || error.message);
             throw error;
         }
     }
+
+    // =========================================================================
+    // PRIVATE HELPERS
+    // =========================================================================
 
     /** Resolve destination config + fresh token in one call. */
     async _auth() {

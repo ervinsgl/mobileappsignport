@@ -24,15 +24,15 @@
  * Usage:
  *   ContextService.getContext().then(context => { ... })
  *
- * @file webapp/utils/ContextService.js
- * @module mobileappsignport/utils/ContextService
+ * @file webapp/utils/services/ContextService.js
+ * @module mobileappsignport/utils/services/ContextService
  */
 sap.ui.define([], () => {
     "use strict";
 
-    const SHELL_SDK_URL          = "https://unpkg.com/fsm-shell@1.20.0/release/fsm-shell-client.js";
-    const SHELL_SDK_TIMEOUT_MS   = 5000;
-    const SHELL_CTX_TIMEOUT_MS   = 5000;
+    const SHELL_SDK_URL           = "https://unpkg.com/fsm-shell@1.20.0/release/fsm-shell-client.js";
+    const SHELL_SDK_TIMEOUT_MS    = 5000;
+    const SHELL_CTX_TIMEOUT_MS    = 5000;
     const SHELL_VIEWSTATE_WAIT_MS = 2000;
 
     return {
@@ -40,7 +40,6 @@ sap.ui.define([], () => {
         /**
          * Detect environment and return a normalised context object.
          * Rejects if no context can be obtained.
-         *
          * @returns {Promise<Object>} Normalised context
          */
         getContext() {
@@ -50,15 +49,8 @@ sap.ui.define([], () => {
             return this._getMobileContext();
         },
 
-        // ─────────────────────────────────────────────────────────────────
-        //  MOBILE
-        // ─────────────────────────────────────────────────────────────────
+        // ── Mobile ────────────────────────────────────────────────────────
 
-        /**
-         * Fetch context stored by the Express backend after FSM Mobile POST.
-         * The backend embeds ?session=<key> in the redirect URL.
-         * @private
-         */
         async _getMobileContext() {
             const params     = new URLSearchParams(window.location.search);
             const sessionKey = params.get("session");
@@ -71,21 +63,11 @@ sap.ui.define([], () => {
             if (!response.ok) throw new Error(`Mobile context HTTP ${response.status}`);
 
             const data = await response.json();
-
-            // Return as-is – the backend already uses the exact field names
-            // the view binds to. Just tag it with source.
             return { ...data, source: "mobile" };
         },
 
-        // ─────────────────────────────────────────────────────────────────
-        //  SHELL
-        // ─────────────────────────────────────────────────────────────────
+        // ── Shell ─────────────────────────────────────────────────────────
 
-        /**
-         * Load the fsm-shell SDK from CDN, request context from FSM Web UI
-         * and normalise it to the same shape as the mobile context.
-         * @private
-         */
         async _getShellContext() {
             await this._loadShellSdk();
             const raw = await this._requestShellContext();
@@ -103,10 +85,6 @@ sap.ui.define([], () => {
             };
         },
 
-        /**
-         * Inject the fsm-shell <script> once; resolve when window.FSMShell exists.
-         * @private
-         */
         _loadShellSdk() {
             return new Promise((resolve, reject) => {
                 if (window.FSMShell) { resolve(); return; }
@@ -124,12 +102,6 @@ sap.ui.define([], () => {
             });
         },
 
-        /**
-         * Emit REQUIRE_CONTEXT and collect both the base context response
-         * and ViewState events (activity / serviceCall).
-         * Resolves with a raw Shell context object extended with objectId / objectType.
-         * @private
-         */
         _requestShellContext() {
             return new Promise((resolve, reject) => {
                 const { ShellSdk, SHELL_EVENTS } = window.FSMShell;
@@ -151,35 +123,31 @@ sap.ui.define([], () => {
                     resolve({ ...baseData, objectId, objectType });
                 };
 
-                // Base context ─────────────────────────────────────────
                 sdk.on(SHELL_EVENTS.Version1.REQUIRE_CONTEXT, (event) => {
                     try {
                         baseData = typeof event === "string" ? JSON.parse(event) : event;
 
-                        // ViewState can arrive inside the initial payload
                         const vs = baseData.viewState;
                         if (vs) {
                             const actId = vs.activityID || vs.selectedActivityId || vs.activityId;
                             const scId  = vs.selectedServiceCallId || vs.serviceCallID || vs.serviceCallId;
-                            if (actId)      { objectId = actId; objectType = "ACTIVITY";    }
-                            else if (scId)  { objectId = scId;  objectType = "SERVICECALL"; }
+                            if (actId)     { objectId = actId; objectType = "ACTIVITY";    }
+                            else if (scId) { objectId = scId;  objectType = "SERVICECALL"; }
                         }
 
-                        // Wait briefly for a separate ViewState event; resolve anyway after that
                         setTimeout(done, SHELL_VIEWSTATE_WAIT_MS);
                     } catch (e) {
                         reject(new Error("Shell context parse error: " + e.message));
                     }
                 });
 
-                // ViewState events ─────────────────────────────────────
                 const onActivity = (a) => {
                     if (!a?.id) return;
                     objectId = a.id; objectType = "ACTIVITY";
                     done();
                 };
                 const onServiceCall = (sc) => {
-                    if (!sc?.id || objectId) return; // activity takes priority
+                    if (!sc?.id || objectId) return;
                     objectId = sc.id; objectType = "SERVICECALL";
                     done();
                 };
@@ -187,7 +155,6 @@ sap.ui.define([], () => {
                 ["activity", "ACTIVITY"].forEach(k => sdk.onViewState(k, onActivity));
                 ["serviceCall", "SERVICECALL"].forEach(k => sdk.onViewState(k, onServiceCall));
 
-                // Trigger ──────────────────────────────────────────────
                 sdk.emit(SHELL_EVENTS.Version1.REQUIRE_CONTEXT, {
                     clientIdentifier: "fsm-signing-extension",
                     auth: { response_type: "token" }
@@ -195,9 +162,7 @@ sap.ui.define([], () => {
             });
         },
 
-        // ─────────────────────────────────────────────────────────────────
-        //  Utility
-        // ─────────────────────────────────────────────────────────────────
+        // ── Utility ───────────────────────────────────────────────────────
 
         _isInIframe() {
             try { return window.self !== window.top; }

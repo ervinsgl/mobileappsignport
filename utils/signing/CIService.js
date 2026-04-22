@@ -34,7 +34,7 @@
  */
 const axios              = require('axios');
 const FormData           = require('form-data');
-const DestinationService = require('./DestinationService');
+const DestinationService = require('../fsm/DestinationService');
 
 class CIService {
 

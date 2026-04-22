@@ -1,14 +1,14 @@
 /**
  * AttachmentService.js
  *
- * Handles all attachment data operations for the signing app.
- * Fetches the attachment list for an FSM object, then enriches
- * each entry with its PDF binary content (base64 preview + full).
+ * All attachment data operations for the signing app:
+ *   - Load attachment list for an FSM object
+ *   - Enrich each attachment with PDF content (preview + full base64)
+ *   - Get the backend URL for serving a single PDF (for PDFViewer)
+ *   - Merge multiple PDFs via the backend and return a viewer URL
  *
- * Returns a flat array ready to bind directly to the view model.
- *
- * @file webapp/utils/AttachmentService.js
- * @module mobileappsignport/utils/AttachmentService
+ * @file webapp/utils/services/AttachmentService.js
+ * @module mobileappsignport/utils/services/AttachmentService
  */
 sap.ui.define([], () => {
     "use strict";
@@ -16,21 +16,19 @@ sap.ui.define([], () => {
     return {
 
         /**
-         * Load all attachments for a given FSM object and enrich each
-         * with its PDF content (preview + full base64).
-         *
+         * Load all attachments for an FSM object and enrich each with PDF content.
          * @param {string} objectId - FSM cloudId from context
-         * @returns {Promise<Array>} Array of enriched attachment objects:
+         * @returns {Promise<Array>} Enriched attachment objects:
          *   { id, fileName, type, content, contentFull, contentType, signed }
          */
         async loadAttachments(objectId) {
-            console.log("[AttachmentService] Loading attachments for objectId:", objectId);
+            console.log("[AttachmentService] Loading attachments | objectId:", objectId);
 
             const response = await fetch(`/api/attachments/${encodeURIComponent(objectId)}`);
             if (!response.ok) throw new Error(`Attachments fetch failed: HTTP ${response.status}`);
 
             const attachments = await response.json();
-            console.log("[AttachmentService] Received:", attachments.length, "attachment(s)", attachments);
+            console.log("[AttachmentService] Received:", attachments.length, "attachment(s)");
 
             const enriched = await Promise.all(
                 attachments.map(att => this._fetchContent(att))
@@ -41,12 +39,46 @@ sap.ui.define([], () => {
         },
 
         /**
+         * Returns the backend URL to stream a single PDF directly.
+         * Use this as the PDFViewer source — plain HTTP, no blob URLs.
+         * @param {string} attachmentId
+         * @returns {string} e.g. "/api/attachment-pdf/<id>"
+         */
+        getPdfUrl(attachmentId) {
+            return `/api/attachment-pdf/${encodeURIComponent(attachmentId)}`;
+        },
+
+        /**
+         * Merge multiple PDFs via the backend.
+         * Returns a plain HTTP URL pointing to the cached merged PDF.
+         * @param {string[]} attachmentIds
+         * @returns {Promise<string>} URL e.g. "/api/attachments/merged/<uuid>"
+         */
+        async mergePdfs(attachmentIds) {
+            console.log("[AttachmentService] Merging PDFs | ids:", attachmentIds);
+
+            const response = await fetch("/api/attachments/merge", {
+                method:  "POST",
+                headers: { "Content-Type": "application/json" },
+                body:    JSON.stringify({ attachmentIds })
+            });
+
+            if (!response.ok) {
+                const err = await response.json().catch(() => ({ message: `HTTP ${response.status}` }));
+                throw new Error(err.message || `Merge failed: HTTP ${response.status}`);
+            }
+
+            const result = await response.json();
+            console.log("[AttachmentService] Merge complete | url:", result.url);
+            return result.url;
+        },
+
+        // ── Private ───────────────────────────────────────────────────────
+
+        /**
          * Fetch PDF binary content for a single attachment.
          * Returns the attachment extended with content fields.
          * Never throws — returns safe fallback values on error.
-         *
-         * @param {Object} attachment - { id, fileName, type }
-         * @returns {Promise<Object>} attachment + { content, contentFull, contentType, signed }
          * @private
          */
         async _fetchContent(attachment) {

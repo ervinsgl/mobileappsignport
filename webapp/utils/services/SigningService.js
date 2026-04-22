@@ -2,10 +2,10 @@
  * SigningService.js
  *
  * Frontend service for document signing operations.
- * Calls the backend signing route which forwards to SAP CI.
+ * Calls the backend signing route which forwards to SAP CI or SecSign.
  *
- * @file webapp/utils/SigningService.js
- * @module mobileappsignport/utils/SigningService
+ * @file webapp/utils/services/SigningService.js
+ * @module mobileappsignport/utils/services/SigningService
  */
 sap.ui.define([], () => {
     "use strict";
@@ -14,15 +14,11 @@ sap.ui.define([], () => {
 
         /**
          * Trigger the signing workflow for an attachment.
-         * Backend fetches the PDF binary from FSM and forwards it to SAP CI.
+         * Backend fetches the PDF binary from FSM and forwards to the configured target.
          *
-         * @param {Object} attachment       - Attachment row object from model
-         * @param {string} attachment.id
-         * @param {string} attachment.fileName
-         * @param {Object} context          - FSM context from model
-         * @param {string} context.cloudId
-         * @param {string} context.userName
-         * @returns {Promise<Object>}       - Backend response { success, data }
+         * @param {Object} attachment       - Attachment row from model { id, fileName }
+         * @param {Object} context          - FSM context { cloudId, userName, authToken }
+         * @returns {Promise<Object>}       - { success, workflowstepurl, portfolioid, data }
          */
         triggerSigning(attachment, context) {
             const payload = {
@@ -31,8 +27,7 @@ sap.ui.define([], () => {
                 objectId:     context.cloudId,
                 userName:     context.userName,
                 authToken:    context.authToken,
-                // Pass the full current URL so the signing portal redirects back
-                // with the session key (?session=xxx) intact
+                // Full current URL (including ?session=) so the portal redirects back correctly
                 returnUrl:    window.location.href
             };
 
