@@ -120,11 +120,40 @@ class FSMService {
 
             if (!data.data || data.data.length === 0) return [];
 
-            const attachments = data.data.map(item => ({
-                id:       item.w.id       || 'N/A',
-                fileName: item.w.fileName || 'N/A',
-                type:     item.w.type     || 'N/A'
+            // Per-request UDF meta cache — avoids repeat API calls for the same UUID
+            // across multiple attachments (all share the same Z_Attachment_PDFSigned UUID)
+            const udfMetaCache = {};
+
+            const attachments = await Promise.all(data.data.map(async item => {
+                const w      = item.w;
+                let   signed = false;
+
+                // Check udfValues for Z_Attachment_PDFSigned
+                if (Array.isArray(w.udfValues) && w.udfValues.length > 0) {
+                    for (const udf of w.udfValues) {
+                        if (!udf.meta) continue;
+
+                        // Resolve meta UUID → externalId (cached)
+                        if (!(udf.meta in udfMetaCache)) {
+                            udfMetaCache[udf.meta] = await this.getUdfMetaById(udf.meta);
+                        }
+
+                        if (udfMetaCache[udf.meta] === 'Z_Attachment_PDFSigned') {
+                            signed = udf.value === 'true';
+                            console.log(`[FSMService] UDF Z_Attachment_PDFSigned | id: ${w.id} | value: ${udf.value} | signed: ${signed}`);
+                            break;
+                        }
+                    }
+                }
+
+                return {
+                    id:       w.id       || 'N/A',
+                    fileName: w.fileName || 'N/A',
+                    type:     w.type     || 'N/A',
+                    signed
+                };
             }));
+
             console.log(`[FSMService] Attachments loaded | objectId: ${objectId} | count: ${attachments.length}`);
             return attachments;
 
@@ -167,38 +196,24 @@ class FSMService {
     }
 
     /**
-     * Create a new FSM Attachment with binary content in a single call.
-     * fileContent is sent as base64. Linked to Activity via object.objectId.
+     * Update an existing FSM Attachment with new binary content.
+     * PATCH with fileContent as base64 + forceUpdate=true.
      *
-     * @param {string} objectId   - FSM Activity cloudId
-     * @param {string} objectType - 'ACTIVITY' | 'SERVICECALL'
-     * @param {string} fileName   - e.g. "Signed - TEST.pdf"
-     * @param {Buffer} buffer     - PDF binary
-     * @returns {Promise<string>} new attachment ID
+     * @param {string} attachmentId - existing FSM attachment ID to overwrite
+     * @param {Buffer} buffer       - signed PDF binary
+     * @returns {Promise<void>}
      */
-    async createAttachmentWithContent(objectId, objectType, fileName, buffer) {
+    async updateAttachmentContent(attachmentId, buffer) {
         try {
-            const { dest, token } = await this._auth();
-
-            const response = await axios.post(
-                `${dest.URL}/api/data/v4/Attachment`,
-                {
-                    object:      { objectId, objectType },
-                    fileName:    fileName,
-                    type:        'PDF',
-                    fileContent: buffer.toString('base64')
-                },
-                { params: { dtos: 'Attachment.8', ...this._accountParams(dest) }, headers: this._headers(dest, token) }
+            const response = await this.patchRequest(
+                `/Attachment/${attachmentId}`,
+                { fileContent: buffer.toString('base64') },
+                { dtos: 'Attachment.8' }
             );
-
-            const newId = response.data?.data?.[0]?.attachment?.id;
-            if (!newId) throw new Error('Attachment creation returned no ID');
-
-            console.log(`[FSMService] Attachment created | id: ${newId} | fileName: ${fileName}`);
-            return newId;
-
+            console.log(`[FSMService] Attachment updated | id: ${attachmentId} | size: ${buffer.length} bytes`);
+            return response;
         } catch (error) {
-            console.error('[FSMService] Create attachment error:', error.response?.data || error.message);
+            console.error('[FSMService] Update attachment error:', error.response?.data || error.message);
             throw error;
         }
     }

@@ -101,11 +101,8 @@ sap.ui.define([
                         // Save signing context before navigating — needed to retrieve signed PDF on return
                         const oContext = oModel.getProperty("/context");
                         localStorage.setItem("pendingSigning", JSON.stringify({
-                            portfolioId:   result.portfolioid,
-                            attachmentId:  oAttachment.id,
-                            fileName:      oAttachment.fileName,
-                            objectId:      oContext.cloudId,
-                            objectType:    oContext.objectType || "ACTIVITY"
+                            portfolioId:  result.portfolioid,
+                            attachmentId: oAttachment.id
                         }));
                         console.log("[View1] Saved pendingSigning to localStorage | portfolioId:", result.portfolioid);
                         window.location.href = result.workflowstepurl;
@@ -143,9 +140,7 @@ sap.ui.define([
 
             AttachmentService.uploadSignedPdf(
                 pending.portfolioId,
-                pending.objectId,
-                pending.objectType || "ACTIVITY",
-                pending.fileName
+                pending.attachmentId
             )
                 .then(result => {
                     console.log("[View1] Signed PDF saved | fileName:", result.fileName, "| id:", result.attachmentId);

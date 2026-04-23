@@ -74,20 +74,18 @@ sap.ui.define([], () => {
         },
 
         /**
-         * Download signed PDF from SecSign and upload to FSM as a new attachment.
-         * @param {string} portfolioId      - from Step 1 SecSign response
-         * @param {string} objectId         - FSM Activity cloudId
-         * @param {string} objectType       - 'ACTIVITY' | 'SERVICECALL'
-         * @param {string} originalFileName - e.g. "TEST.pdf"
-         * @returns {Promise<{ attachmentId, fileName }>}
+         * Download signed PDF from SecSign and update the original FSM attachment.
+         * @param {string} portfolioId  - from Step 1 SecSign response
+         * @param {string} attachmentId - FSM attachment ID to update with signed content
+         * @returns {Promise<{ attachmentId }>}
          */
-        async uploadSignedPdf(portfolioId, objectId, objectType, originalFileName) {
-            console.log("[AttachmentService] uploadSignedPdf | portfolioId:", portfolioId, "| objectId:", objectId);
+        async uploadSignedPdf(portfolioId, attachmentId) {
+            console.log("[AttachmentService] uploadSignedPdf | portfolioId:", portfolioId, "| attachmentId:", attachmentId);
 
             const response = await fetch("/api/attachments/upload-signed", {
                 method:  "POST",
                 headers: { "Content-Type": "application/json" },
-                body:    JSON.stringify({ portfolioId, objectId, objectType, originalFileName })
+                body:    JSON.stringify({ portfolioId, attachmentId })
             });
 
             if (!response.ok) {
@@ -96,7 +94,7 @@ sap.ui.define([], () => {
             }
 
             const result = await response.json();
-            console.log("[AttachmentService] Signed PDF uploaded | attachmentId:", result.attachmentId, "| fileName:", result.fileName);
+            console.log("[AttachmentService] Attachment updated with signed content | attachmentId:", result.attachmentId);
             return result;
         },
 
@@ -114,7 +112,7 @@ sap.ui.define([], () => {
 
                 if (!response.ok) {
                     console.warn(`[AttachmentService] Content fetch failed for ${attachment.id}: HTTP ${response.status}`);
-                    return { ...attachment, content: "N/A", contentFull: null, contentType: "application/pdf", signed: false };
+                    return { ...attachment, content: "N/A", contentFull: null, contentType: "application/pdf" };
                 }
 
                 const result  = await response.json();
@@ -126,13 +124,13 @@ sap.ui.define([], () => {
                     ...attachment,
                     content:     preview,
                     contentFull: result.base64,
-                    contentType: result.contentType || "application/pdf",
-                    signed:      false
+                    contentType: result.contentType || "application/pdf"
+                    // signed preserved from attachment (set by FSMService UDF check)
                 };
 
             } catch (error) {
                 console.error(`[AttachmentService] Content error for ${attachment.id}:`, error.message);
-                return { ...attachment, content: "Error", contentFull: null, contentType: "application/pdf", signed: false };
+                return { ...attachment, content: "Error", contentFull: null, contentType: "application/pdf" };
             }
         }
     };

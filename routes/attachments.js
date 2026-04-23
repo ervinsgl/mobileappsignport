@@ -176,19 +176,19 @@ router.get('/attachments/merged/:uuid', (req, res) => {
 /**
  * POST /api/attachments/upload-signed
  *
- * Downloads the signed PDF from SecSign and saves it as a new
- * FSM Attachment linked to the Activity.
+ * Downloads the signed PDF from SecSign and updates the original
+ * FSM Attachment with the signed content (PATCH fileContent).
  *
- * Body: { portfolioId, objectId, objectType, originalFileName }
+ * Body: { portfolioId, attachmentId }
  */
 router.post('/attachments/upload-signed', async (req, res) => {
-    const { portfolioId, objectId, objectType, originalFileName } = req.body;
+    const { portfolioId, attachmentId } = req.body;
 
-    if (!portfolioId || !objectId) {
-        return res.status(400).json({ message: 'portfolioId and objectId are required' });
+    if (!portfolioId || !attachmentId) {
+        return res.status(400).json({ message: 'portfolioId and attachmentId are required' });
     }
 
-    console.log(`[Attachments] POST upload-signed | portfolioId: ${portfolioId} | objectId: ${objectId}`);
+    console.log(`[Attachments] POST upload-signed | portfolioId: ${portfolioId} | attachmentId: ${attachmentId}`);
 
     try {
         const SecSignService = require('../utils/signing/SecSignService');
@@ -197,21 +197,15 @@ router.post('/attachments/upload-signed', async (req, res) => {
         const { buffer } = await SecSignService.downloadSigned(portfolioId);
         console.log(`[Attachments] Downloaded signed PDF | size: ${buffer.length} bytes`);
 
-        // Save to FSM as new attachment
-        const signedName      = `Signed - ${originalFileName || 'document.pdf'}`;
-        const newAttachmentId = await FSMService.createAttachmentWithContent(
-            objectId,
-            objectType || 'ACTIVITY',
-            signedName,
-            buffer
-        );
+        // Update existing attachment with signed content
+        await FSMService.updateAttachmentContent(attachmentId, buffer);
 
-        console.log(`[Attachments] Signed PDF saved | attachmentId: ${newAttachmentId} | fileName: ${signedName}`);
-        return res.json({ attachmentId: newAttachmentId, fileName: signedName });
+        console.log(`[Attachments] Attachment updated with signed content | attachmentId: ${attachmentId}`);
+        return res.json({ attachmentId });
 
     } catch (error) {
         console.error(`[Attachments] Upload-signed failed:`, error.message);
-        return res.status(500).json({ message: 'Failed to upload signed PDF', error: error.message });
+        return res.status(500).json({ message: 'Failed to update signed PDF', error: error.message });
     }
 });
 
