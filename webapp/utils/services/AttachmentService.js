@@ -73,7 +73,34 @@ sap.ui.define([], () => {
             return result.url;
         },
 
-        // ── Private ───────────────────────────────────────────────────────
+        /**
+         * Download signed PDF from SecSign and upload to FSM as a new attachment.
+         * @param {string} portfolioId      - from Step 1 SecSign response
+         * @param {string} objectId         - FSM Activity cloudId
+         * @param {string} objectType       - 'ACTIVITY' | 'SERVICECALL'
+         * @param {string} originalFileName - e.g. "TEST.pdf"
+         * @returns {Promise<{ attachmentId, fileName }>}
+         */
+        async uploadSignedPdf(portfolioId, objectId, objectType, originalFileName) {
+            console.log("[AttachmentService] uploadSignedPdf | portfolioId:", portfolioId, "| objectId:", objectId);
+
+            const response = await fetch("/api/attachments/upload-signed", {
+                method:  "POST",
+                headers: { "Content-Type": "application/json" },
+                body:    JSON.stringify({ portfolioId, objectId, objectType, originalFileName })
+            });
+
+            if (!response.ok) {
+                const err = await response.json().catch(() => ({ message: `HTTP ${response.status}` }));
+                throw new Error(err.message || `Upload failed: HTTP ${response.status}`);
+            }
+
+            const result = await response.json();
+            console.log("[AttachmentService] Signed PDF uploaded | attachmentId:", result.attachmentId, "| fileName:", result.fileName);
+            return result;
+        },
+
+                // ── Private ───────────────────────────────────────────────────────
 
         /**
          * Fetch PDF binary content for a single attachment.

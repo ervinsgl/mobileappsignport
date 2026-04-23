@@ -98,6 +98,16 @@ sap.ui.define([
 
                     if (result?.workflowstepurl) {
                         console.log("[View1] Navigating to signing portal:", result.workflowstepurl);
+                        // Save signing context before navigating — needed to retrieve signed PDF on return
+                        const oContext = oModel.getProperty("/context");
+                        localStorage.setItem("pendingSigning", JSON.stringify({
+                            portfolioId:   result.portfolioid,
+                            attachmentId:  oAttachment.id,
+                            fileName:      oAttachment.fileName,
+                            objectId:      oContext.cloudId,
+                            objectType:    oContext.objectType || "ACTIVITY"
+                        }));
+                        console.log("[View1] Saved pendingSigning to localStorage | portfolioId:", result.portfolioid);
                         window.location.href = result.workflowstepurl;
                     } else {
                         console.warn("[View1] No workflowstepurl – marking signed locally");
@@ -117,47 +127,38 @@ sap.ui.define([
         // ── Return from signing portal ─────────────────────────────────────
 
         _checkSigningReturn() {
-            const params = new URLSearchParams(window.location.search);
+            const params     = new URLSearchParams(window.location.search);
+            const pendingRaw = localStorage.getItem("pendingSigning");
+            const pending    = pendingRaw ? JSON.parse(pendingRaw) : null;
 
-            // Log full URL and ALL params on every load so nothing from SecSign redirect is missed
-            console.log("[View1] _checkSigningReturn | full URL:", window.location.href);
-            console.log("[View1] _checkSigningReturn | search string:", window.location.search || "(empty)");
+            if (!pending) return;
 
-            const allParams = {};
-            params.forEach((value, key) => { allParams[key] = value; });
-            console.log("[View1] _checkSigningReturn | all params:", JSON.stringify(allParams, null, 2));
+            console.log("[View1] Returned from signing portal | portfolioId:", pending.portfolioId);
 
-            const signed       = params.get("signed");
-            const portfolioId  = params.get("portfolioId");
-            const attachmentId = params.get("attachmentId");
+            // Clear immediately so it doesn't re-trigger on next load
+            localStorage.removeItem("pendingSigning");
 
-            console.log("[View1] _checkSigningReturn | signed:", signed, "| portfolioId:", portfolioId, "| attachmentId:", attachmentId);
+            const oModel = this.getView().getModel("view");
+            oModel.setProperty("/attachmentsBusy", true);
 
-            if (signed !== "true") {
-                console.log("[View1] _checkSigningReturn | no signed=true param – normal load");
-                return;
-            }
+            AttachmentService.uploadSignedPdf(
+                pending.portfolioId,
+                pending.objectId,
+                pending.objectType || "ACTIVITY",
+                pending.fileName
+            )
+                .then(result => {
+                    console.log("[View1] Signed PDF saved | fileName:", result.fileName, "| id:", result.attachmentId);
+                    oModel.setProperty("/attachmentsBusy", false);
+                    MessageToast.show(`Signed PDF saved: ${result.fileName}`, { duration: 5000 });
+                })
+                .catch(error => {
+                    console.error("[View1] Signed PDF upload failed:", error.message);
+                    oModel.setProperty("/attachmentsBusy", false);
+                    MessageBox.error("Signed PDF could not be saved: " + error.message);
+                });
 
-            console.log("[View1] Returned from signing portal | portfolioId:", portfolioId, "| attachmentId:", attachmentId);
-
-            if (attachmentId) {
-                const oModel      = this.getView().getModel("view");
-                const attachments = oModel.getProperty("/attachments") || [];
-                const idx         = attachments.findIndex(a => a.id === attachmentId);
-
-                if (idx !== -1) {
-                    oModel.setProperty(`/attachments/${idx}/signed`, true);
-                    console.log("[View1] Row marked signed | index:", idx);
-                } else {
-                    console.warn("[View1] Attachment not found for id:", attachmentId);
-                }
-            }
-
-            MessageToast.show(
-                `Document signed successfully${portfolioId ? " (Portfolio: " + portfolioId + ")" : ""}`,
-                { duration: 4000 }
-            );
-
+            // Clean URL — keep only session param
             const sessionKey = params.get("session");
             const cleanUrl   = window.location.pathname
                 + (sessionKey ? `?session=${encodeURIComponent(sessionKey)}` : "")

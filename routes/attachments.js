@@ -164,4 +164,56 @@ router.get('/attachments/merged/:uuid', (req, res) => {
     res.send(cached.buffer);
 });
 
+/**
+ * POST /api/attachments/upload-signed
+ *
+ * Downloads the signed PDF from SecSign, uploads it to FSM as a new
+ * attachment on the given Activity.
+ *
+ * Body: { portfolioId, objectId, objectType, originalFileName }
+ * Returns: { attachmentId, fileName }
+ */
+/**
+ * POST /api/attachments/upload-signed
+ *
+ * Downloads the signed PDF from SecSign and saves it as a new
+ * FSM Attachment linked to the Activity.
+ *
+ * Body: { portfolioId, objectId, objectType, originalFileName }
+ */
+router.post('/attachments/upload-signed', async (req, res) => {
+    const { portfolioId, objectId, objectType, originalFileName } = req.body;
+
+    if (!portfolioId || !objectId) {
+        return res.status(400).json({ message: 'portfolioId and objectId are required' });
+    }
+
+    console.log(`[Attachments] POST upload-signed | portfolioId: ${portfolioId} | objectId: ${objectId}`);
+
+    try {
+        const SecSignService = require('../utils/signing/SecSignService');
+
+        // Download signed PDF from SecSign
+        const { buffer } = await SecSignService.downloadSigned(portfolioId);
+        console.log(`[Attachments] Downloaded signed PDF | size: ${buffer.length} bytes`);
+
+        // Save to FSM as new attachment
+        const signedName      = `Signed - ${originalFileName || 'document.pdf'}`;
+        const newAttachmentId = await FSMService.createAttachmentWithContent(
+            objectId,
+            objectType || 'ACTIVITY',
+            signedName,
+            buffer
+        );
+
+        console.log(`[Attachments] Signed PDF saved | attachmentId: ${newAttachmentId} | fileName: ${signedName}`);
+        return res.json({ attachmentId: newAttachmentId, fileName: signedName });
+
+    } catch (error) {
+        console.error(`[Attachments] Upload-signed failed:`, error.message);
+        return res.status(500).json({ message: 'Failed to upload signed PDF', error: error.message });
+    }
+});
+
+
 module.exports = router;

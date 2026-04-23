@@ -1,11 +1,10 @@
 /**
  * SecSignService.js
  *
- * Backend service for direct SecSign Signature Portal calls.
+ * Backend service for SecSign Signature Portal calls.
  * Uses SECSIGN_CONNECT BTP destination (BasicAuthentication).
- * Credentials (User/Password) stored in destination — same pattern as CIService.
  *
- * TLS: rejectUnauthorized:false + keepAlive:false required for SecSign from CF.
+ * TLS note: rejectUnauthorized:false + keepAlive:false required for CF → SecSign.
  *
  * @file utils/signing/SecSignService.js
  */
@@ -16,14 +15,14 @@ const DestinationService = require('../fsm/DestinationService');
 
 class SecSignService {
 
+    /**
+     * Trigger a signing workflow on SecSign.
+     * Returns response including workflowstepurl for browser navigation.
+     */
     async triggerSigning({ pdfBuffer, fileName, userName, attachmentId, returnUrl }) {
-        console.log(`[SecSignService] ── Signing trigger ─────────────────────`);
-
-        // Step 1: resolve destination (URL + credentials)
         const dest       = await this._getDestConfig();
         const authHeader = this._basicAuth(dest.User, dest.Password);
 
-        // Step 2: build form-data
         const steps = JSON.stringify([{
             action:  'simple-signature',
             signers: [{ name: userName, signer_type: 'user' }]
@@ -38,64 +37,60 @@ class SecSignService {
         form.append('redirecturl',     redirectUrl);
         form.append('redirecttimeout', '3');
 
-        console.log(`[SecSignService] URL:             ${dest.URL}`);
-        console.log(`[SecSignService] User:            ${dest.User}`);
-        console.log(`[SecSignService] File:            ${fileName}`);
-        console.log(`[SecSignService] AttachmentId:    ${attachmentId}`);
-        console.log(`[SecSignService] Signer:          ${userName}`);
-        console.log(`[SecSignService] Steps:           ${steps}`);
-        console.log(`[SecSignService] PDF size:        ${pdfBuffer.length} bytes`);
-        console.log(`[SecSignService] Redirect URL:    ${redirectUrl}`);
+        console.log(`[SecSignService] Trigger | file: ${fileName} | signer: ${userName} | size: ${pdfBuffer.length} bytes`);
 
-        // Step 3: call SecSign
-        console.log(`[SecSignService] Sending POST to SecSign...`);
         let response;
         try {
             response = await axios.post(dest.URL, form, {
-                headers: {
-                    ...form.getHeaders(),
-                    'Authorization': authHeader
-                },
-                httpsAgent: new https.Agent({
-                    rejectUnauthorized: false,
-                    keepAlive:          false
-                }),
-                timeout: 30000
+                headers:    { ...form.getHeaders(), 'Authorization': authHeader },
+                httpsAgent: new https.Agent({ rejectUnauthorized: false, keepAlive: false }),
+                timeout:    30000
             });
         } catch (error) {
-            console.error(`[SecSignService] HTTP error:   ${error.response?.status} ${error.response?.statusText}`);
-            console.error(`[SecSignService] Error body:   ${JSON.stringify(error.response?.data, null, 2)}`);
-            console.error(`[SecSignService] Network code: ${error.code}`);
-            console.error(`[SecSignService] Network msg:  ${error.message}`);
+            console.error(`[SecSignService] Trigger error: ${error.response?.status} ${error.message}`);
+            console.error(`[SecSignService] Error body:`, error.response?.data);
             throw error;
         }
 
-        // Step 4: log response
-        console.log(`[SecSignService] ── Response ────────────────────────────`);
-        console.log(`[SecSignService] HTTP status:        ${response.status}`);
-        console.log(`[SecSignService] Full response:      ${JSON.stringify(response.data, null, 2)}`);
-        console.log(`[SecSignService] portfolioid:        ${response.data?.portfolioid}`);
-        console.log(`[SecSignService] workflowid:         ${response.data?.workflowid}`);
-        console.log(`[SecSignService] workflowstepid:     ${response.data?.workflowstepid}`);
-        console.log(`[SecSignService] workflowstepurl:    ${response.data?.workflowstepurl}`);
-        console.log(`[SecSignService] portfoliostate:     ${response.data?.portfoliostate}`);
-        console.log(`[SecSignService] portfoliostatename: ${response.data?.portfoliostatename}`);
-        console.log(`[SecSignService] isended:            ${response.data?.isended}`);
-        console.log(`[SecSignService] iserror:            ${response.data?.iserror}`);
-        console.log(`[SecSignService] ────────────────────────────────────────`);
-
+        console.log(`[SecSignService] Trigger OK | portfolioid: ${response.data?.portfolioid} | workflowstepurl: ${response.data?.workflowstepurl}`);
         return response.data;
     }
 
-    // ── Private helpers ───────────────────────────────────────────────────────
+    /**
+     * Download the signed PDF from SecSign after signing is complete.
+     * Returns { buffer, contentType }.
+     */
+    async downloadSigned(portfolioId) {
+        const dest        = await this._getDestConfig();
+        const authHeader  = this._basicAuth(dest.User, dest.Password);
+        const downloadUrl = `${dest.URL.replace('/SPWorkflow/Start', '')}/SPPortfolio/${portfolioId}/Download`;
+
+        console.log(`[SecSignService] Download | portfolioId: ${portfolioId} | url: ${downloadUrl}`);
+
+        let response;
+        try {
+            response = await axios.get(downloadUrl, {
+                headers:      { 'Authorization': authHeader, 'Accept': 'application/octet-stream' },
+                httpsAgent:   new https.Agent({ rejectUnauthorized: false, keepAlive: false }),
+                responseType: 'arraybuffer',
+                timeout:      30000
+            });
+        } catch (error) {
+            console.error(`[SecSignService] Download error: ${error.response?.status} ${error.message}`);
+            throw error;
+        }
+
+        const buffer      = Buffer.from(response.data);
+        const contentType = response.headers['content-type'] || '';
+        console.log(`[SecSignService] Download OK | size: ${buffer.length} bytes | contentType: ${contentType}`);
+        return { buffer, contentType };
+    }
+
+    // ── Private ───────────────────────────────────────────────────────────────
 
     async _getDestConfig() {
-        console.log(`[SecSignService] Resolving SECSIGN_CONNECT destination...`);
         const destination = await DestinationService.getDestination('SECSIGN_CONNECT');
-        const config      = destination.destinationConfiguration;
-        console.log(`[SecSignService] Destination URL:  ${config.URL}`);
-        console.log(`[SecSignService] Destination User: ${config.User}`);
-        return config;
+        return destination.destinationConfiguration;
     }
 
     _basicAuth(user, password) {
