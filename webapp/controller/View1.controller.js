@@ -57,6 +57,9 @@ sap.ui.define([
 
             } catch (error) {
                 console.warn("[View1] Context unavailable:", error.message);
+                // Still check for pending signing return even if context failed
+                // (session may have expired while user was on SecSign portal)
+                this._checkSigningReturn();
                 oModel.setProperty("/showError", true);
                 oModel.setProperty("/busy", false);
             }
@@ -102,7 +105,8 @@ sap.ui.define([
                         const oContext = oModel.getProperty("/context");
                         localStorage.setItem("pendingSigning", JSON.stringify({
                             portfolioId:  result.portfolioid,
-                            attachmentId: oAttachment.id
+                            attachmentId: oAttachment.id,
+                            objectId:     oContext.cloudId
                         }));
                         console.log("[View1] Saved pendingSigning to localStorage | portfolioId:", result.portfolioid);
                         window.location.href = result.workflowstepurl;
@@ -143,9 +147,14 @@ sap.ui.define([
                 pending.attachmentId
             )
                 .then(result => {
-                    console.log("[View1] Signed PDF saved | fileName:", result.fileName, "| id:", result.attachmentId);
-                    oModel.setProperty("/attachmentsBusy", false);
-                    MessageToast.show(`Signed PDF saved: ${result.fileName}`, { duration: 5000 });
+                    console.log("[View1] Signed PDF saved | attachmentId:", result.attachmentId);
+                    MessageToast.show("Document signed and saved successfully", { duration: 5000 });
+                    // Reload table so signed status (UDF) is reflected immediately
+                    const objectId = pending.objectId
+                        || this.getView().getModel("view").getProperty("/context/cloudId");
+                    if (objectId) this._loadAttachments(objectId).finally(() => {
+                        oModel.setProperty("/attachmentsBusy", false);
+                    }); else oModel.setProperty("/attachmentsBusy", false);
                 })
                 .catch(error => {
                     console.error("[View1] Signed PDF upload failed:", error.message);

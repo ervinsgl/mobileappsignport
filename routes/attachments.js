@@ -197,10 +197,13 @@ router.post('/attachments/upload-signed', async (req, res) => {
         const { buffer } = await SecSignService.downloadSigned(portfolioId);
         console.log(`[Attachments] Downloaded signed PDF | size: ${buffer.length} bytes`);
 
-        // Update existing attachment with signed content
+        // Update attachment binary with signed PDF
         await FSMService.updateAttachmentContent(attachmentId, buffer);
 
-        console.log(`[Attachments] Attachment updated with signed content | attachmentId: ${attachmentId}`);
+        // Mark attachment as signed via UDF
+        await FSMService.markAttachmentSigned(attachmentId);
+
+        console.log(`[Attachments] Attachment signed and marked | attachmentId: ${attachmentId}`);
         return res.json({ attachmentId });
 
     } catch (error) {

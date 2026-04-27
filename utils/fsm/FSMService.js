@@ -196,6 +196,32 @@ class FSMService {
     }
 
     /**
+     * Mark an FSM Attachment as signed via UDF Z_Attachment_PDFSigned = true.
+     * Uses externalId reference so no UUID lookup needed.
+     *
+     * @param {string} attachmentId - FSM attachment ID
+     */
+    async markAttachmentSigned(attachmentId) {
+        try {
+            const response = await this.patchRequest(
+                `/Attachment/${attachmentId}`,
+                {
+                    udfValues: [{
+                        meta:  { externalId: 'Z_Attachment_PDFSigned' },
+                        value: 'true'
+                    }]
+                },
+                { dtos: 'Attachment.8' }
+            );
+            console.log(`[FSMService] Attachment marked signed | id: ${attachmentId}`);
+            return response;
+        } catch (error) {
+            console.error('[FSMService] Mark signed error:', error.response?.data || error.message);
+            throw error;
+        }
+    }
+
+    /**
      * Update an existing FSM Attachment with new binary content.
      * PATCH with fileContent as base64 + forceUpdate=true.
      *
